@@ -8,31 +8,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getUserPlanId } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { entitlementsFor } from "@/lib/entitlements";
-import type { PlanId } from "@/lib/entitlements";
 import { info, error } from "@/lib/logger";
-
-async function getUserPlanId(userId: string): Promise<PlanId> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const getAdminPb = async () => null as any;
-  const pb = await getAdminPb();
-  if (!pb) return "free";
-  try {
-    const memberships = await pb.collection("memberships").getList(1, 1, {
-      filter: `user = "${userId}"`,
-    });
-    if (memberships.items.length === 0) {
-      return "free";
-    }
-    const membership = memberships.items[0];
-    const org = await pb.collection("organisations").getOne(membership.organisation);
-    return ((org as Record<string, unknown>).plan as PlanId) ?? "free";
-  } catch {
-    return "free";
-  }
-}
 
 async function requireOwner(
   request: NextRequest,

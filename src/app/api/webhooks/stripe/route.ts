@@ -23,20 +23,24 @@ import { error, info } from "@/lib/logger";
  * changes without re-login.
  */
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY!;
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
-
-if (!stripeSecretKey || !webhookSecret) {
-  throw new Error(
-    "STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET must be set for webhook handling.",
-  );
-}
-
-const stripe = new Stripe(stripeSecretKey, {
-  apiVersion: "2026-10-28.endive",
-});
-
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // Secrets are read at request time, not module load: `next build` evaluates
+  // route modules without runtime credentials.
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!stripeSecretKey || !webhookSecret) {
+    error("stripe_webhook", { error: "Stripe webhook is not configured" });
+    return NextResponse.json(
+      { error: "Stripe webhook not configured." },
+      { status: 503 },
+    );
+  }
+
+  const stripe = new Stripe(stripeSecretKey, {
+    apiVersion: "2026-10-28.endive",
+  });
+
   const payload = await request.text();
   const signature = request.headers.get("stripe-signature");
 

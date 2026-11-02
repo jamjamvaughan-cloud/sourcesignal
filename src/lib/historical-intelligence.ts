@@ -1,7 +1,7 @@
 /**
  * Historical Intelligence Layer.
  *
- * Queries historical PocketBase records to attach predictive intelligence
+ * Queries historical opportunity records to attach predictive intelligence
  * tags to live signals:
  *   1. Pre-Tender Renewal Risk (90–120 days before contract expiry)
  *   2. Competitive Density / Share of Voice (incumbent lock-in vs open market)
@@ -29,8 +29,11 @@ export const SPENDING_BASELINE_DAYS = 30;
 /** Threshold multiplier for budget flush detection (4x normal volume). */
 export const BUDGET_FLUSH_MULTIPLIER = 4;
 
+/** Length of the "current" vs "baseline" momentum comparison windows. */
+export const MOMENTUM_WINDOW_DAYS = 30;
+
 /**
- * Historical award record from PocketBase.
+ * Historical award record from PostgreSQL.
  */
 interface HistoricalAward {
   id: string;
@@ -41,12 +44,12 @@ interface HistoricalAward {
   sector: string | null;
   region: string | null;
   closing_date: string | null;
-  estimated_value: number | null;
+  estimated_value: string | number | null;
   currency: string | null;
   winner: string | null;
   signal_tier: string | null;
-  created: string | null;
-  updated: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 /**
@@ -122,15 +125,20 @@ export async function getBuyerCompetitiveProfile(
 ): Promise<BuyerCompetitiveProfile | null> {
   const result = await query(
     `SELECT id, canonical_id, title, buyer, buyer_canonical_id, sector, region,
-            closing_date, estimated_value, currency, winner, signal_tier, created, updated
+            closing_date, estimated_value, currency, winner, signal_tier,
+            created_at, updated_at
      FROM opportunities
-     WHERE buyer_canonical_id IS NOT NULL AND winner IS NOT NULL AND winner != ''
-     AND created >= NOW() - INTERVAL '${COMPETITIVE_LOOKBACK_DAYS} days'
-     ORDER BY created DESC`,
+     WHERE buyer_canonical_id IS NOT NULL
+       AND winner IS NOT NULL
+       AND winner != ''
+       AND LOWER(buyer) = LOWER($1)
+       AND created_at >= NOW() - ($2 || ' days')::interval
+     ORDER BY created_at DESC`,
+    [buyer, COMPETITIVE_LOOKBACK_DAYS],
   );
   const awards = result.rows as HistoricalAward[];
   const buyerAwards = awards.filter(
-    (a) => a.buyer && a.buyer.toLowerCase() === buyer.toLowerCase(),
+    (award) => award.buyer && award.buyer.toLowerCase() === buyer.toLowerCase(),
   );
 
   if (buyerAwards.length === 0) {
@@ -199,7 +207,8 @@ export async function getPreTenderRisk(
 ): Promise<PreTenderRisk | null> {
   const result = await query(
     `SELECT id, canonical_id, title, buyer, buyer_canonical_id, sector, region,
-            closing_date, estimated_value, currency, winner, signal_tier, created, updated
+            closing_date, estimated_value, currency, winner, signal_tier,
+            created_at, updated_at
      FROM opportunities WHERE canonical_id = $1`,
     [canonicalId],
   );
@@ -207,12 +216,12 @@ export async function getPreTenderRisk(
   const record = result.rows[0] as HistoricalAward | undefined;
   if (!record) return null;
 
-  const title = record.title as string;
-  const buyer = record.buyer as string | null;
-  const estimatedValue = record.estimated_value as number | null;
-  const currency = record.currency as string | null;
-  const closeDate =
-    (record.closing_date as string | null) ?? closingDate ?? null;
+  const title = record.title;
+  const buyer = record.buyer;
+  const estimatedValue =
+    record.estimated_value != null ? Number(record.estimated_value) : null;
+  const currency = record.currency;
+  const closeDate = record.closing_date ?? closingDate ?? null;
 
   let daysUntilExpiry: number | null = null;
   let isExpiringSoon = false;
@@ -227,13 +236,45 @@ export async function getPreTenderRisk(
     if (isExpiringSoon) {
       renewalRiskTag = `Upcoming Renewal Risk: "${title}" (${buyer ?? "unknown buyer"}) expires in ${daysUntilExpiry} days.`;
 
-      const buyerAwards = result.rows as HistoricalAward[];
+      // Historical awards for the same buyer, to measure how often they
+      // re-tender shortly before expiry.
+      let buyerAwards: HistoricalAward[] = [];
+      if (record.buyer_canonical_id) {
+        const historical = await query(
+          `SELECT id, canonical_id, title, buyer, buyer_canonical_id, sector,
+                  region, closing_date, estimated_value, currency, winner,
+                  signal_tier, created_at, updated_at
+             FROM opportunities
+            WHERE buyer_canonical_id = $1
+              AND id <> $2
+              AND created_at >= NOW() - ($3 || ' days')::interval
+            ORDER BY created_at DESC`,
+          [
+            record.buyer_canonical_id,
+            record.id,
+            COMPETITIVE_LOOKBACK_DAYS,
+          ],
+        );
+        buyerAwards = historical.rows as HistoricalAward[];
+      } else if (buyer) {
+        const historical = await query(
+          `SELECT id, canonical_id, title, buyer, buyer_canonical_id, sector,
+                  region, closing_date, estimated_value, currency, winner,
+                  signal_tier, created_at, updated_at
+             FROM opportunities
+            WHERE LOWER(buyer) = LOWER($1)
+              AND id <> $2
+              AND created_at >= NOW() - ($3 || ' days')::interval
+            ORDER BY created_at DESC`,
+          [buyer, record.id, COMPETITIVE_LOOKBACK_DAYS],
+        );
+        buyerAwards = historical.rows as HistoricalAward[];
+      }
 
       if (buyerAwards.length > 0) {
-        const retenderWithin45 = buyerAwards.filter((a) => {
-          if (!a.closing_date || !a.created) return false;
-          const days = daysBetween(a.created as string, a.closing_date as string);
-          return days <= 45;
+        const retenderWithin45 = buyerAwards.filter((award) => {
+          if (!award.closing_date || !award.created_at) return false;
+          return daysBetween(award.created_at, award.closing_date) <= 45;
         }).length;
 
         const retenderPct = Math.round(
@@ -248,7 +289,7 @@ export async function getPreTenderRisk(
   }
 
   return {
-    canonicalId: record.id as string,
+    canonicalId: record.canonical_id,
     title,
     buyer,
     estimatedValue,
@@ -280,17 +321,19 @@ export async function getBuyerSpendingVelocity(
 
   const currentRecords = await query(
     `SELECT id, buyer_canonical_id, buyer, sector, region, closing_date,
-            estimated_value, currency, created
+            estimated_value, currency, created_at
      FROM opportunities
-     WHERE buyer_canonical_id = $1 AND created >= $2`,
+     WHERE buyer_canonical_id = $1 AND created_at >= $2`,
     [buyer, windowStart],
   );
 
   const baselineRecords = await query(
     `SELECT id, buyer_canonical_id, buyer, sector, region, closing_date,
-            estimated_value, currency, created
+            estimated_value, currency, created_at
      FROM opportunities
-     WHERE buyer_canonical_id = $1 AND created >= $2 AND created < $3`,
+     WHERE buyer_canonical_id = $1
+       AND created_at >= $2
+       AND created_at < $3`,
     [buyer, baselineStart, windowStart],
   );
 
@@ -310,9 +353,10 @@ export async function getBuyerSpendingVelocity(
 
   const averageWeeklyValue =
     baselineCount > 0
-      ? (baselineTotalValue / (SPENDING_BASELINE_DAYS / 7))
+      ? baselineTotalValue / (SPENDING_BASELINE_DAYS / 7)
       : 0;
-  const currentWeeklyValue = currentTotalValue / (SPENDING_VELOCITY_WINDOW_DAYS / 7);
+  const currentWeeklyValue =
+    currentTotalValue / (SPENDING_VELOCITY_WINDOW_DAYS / 7);
 
   const isBudgetFlush =
     baselineCount > 0 &&
@@ -342,26 +386,37 @@ export async function getBuyerSpendingVelocity(
 /**
  * Module 4: Cross-Border Sector Momentum.
  *
- * Compares current period signal counts vs baseline period per country x sector
- * to detect geographic demand trends.
+ * Compares the last 30 days of signal volume against the preceding 30 days
+ * for a country x sector pair to detect geographic demand trends.
  */
 export async function getSectorMomentum(
   sector: string,
   country: CountryCode,
 ): Promise<SectorMomentum | null> {
   const result = await query(
-    `SELECT id, sector, region, closing_date, estimated_value, currency, created
+    `SELECT
+       COUNT(*) FILTER (
+         WHERE created_at >= NOW() - ($3 || ' days')::interval
+       ) AS current_count,
+       COUNT(*) FILTER (
+         WHERE created_at >= NOW() - ($4 || ' days')::interval
+           AND created_at < NOW() - ($3 || ' days')::interval
+       ) AS baseline_count
      FROM opportunities
-     WHERE sector = $1 AND region = $2
-     ORDER BY created DESC`,
-    [sector, country],
+     WHERE sector = $1 AND country = $2`,
+    [
+      sector,
+      country,
+      MOMENTUM_WINDOW_DAYS,
+      MOMENTUM_WINDOW_DAYS * 2,
+    ],
   );
 
-  const currentRecords = result.rows as HistoricalAward[];
-  const baselineRecords = result.rows as HistoricalAward[];
-
-  const currentCount = currentRecords.length;
-  const baselineCount = baselineRecords.length;
+  const row = result.rows[0] as
+    | { current_count: string; baseline_count: string }
+    | undefined;
+  const currentCount = Number(row?.current_count ?? 0);
+  const baselineCount = Number(row?.baseline_count ?? 0);
 
   let growthPercent = 0;
   if (baselineCount === 0) {

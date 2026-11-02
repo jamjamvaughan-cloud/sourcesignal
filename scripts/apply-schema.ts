@@ -1,3 +1,4 @@
+import "./load-env";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pool } from "../src/lib/db";

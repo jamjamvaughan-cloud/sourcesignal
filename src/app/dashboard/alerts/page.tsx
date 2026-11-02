@@ -1,11 +1,8 @@
-import { headers } from "next/headers";
-import { getCurrentUser } from "@/lib/auth";
-import { getUserPlanIdFromPB } from "@/lib/auth";
-import { type PlanId } from "@/lib/entitlements";
 import { entitlementsFor } from "@/lib/entitlements";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/ui/empty-state";
+import { getSessionContext } from "@/lib/backend";
 
 const ALERT_SECTORS = [
   "Construction", "Infrastructure", "Energy", "Industrial and Manufacturing",
@@ -15,21 +12,9 @@ const ALERT_SECTORS = [
   "Public Sector Services",
 ];
 
-async function getUserPlanId(): Promise<PlanId> {
-  const headersList = await headers();
-  const cookieHeader = headersList.get("cookie");
-  const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
-  if (!user) return "free";
-  return getUserPlanIdFromPB(user.id);
-}
-
 export default async function AlertsPage() {
-  const planId = await getUserPlanId();
+  const { planId, user } = await getSessionContext();
   const entitlements = entitlementsFor(planId);
-
-  const headersList = await headers();
-  const cookieHeader = headersList.get("cookie");
-  const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
 
   if (!entitlements.alertsEnabled) {
     return (

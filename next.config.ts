@@ -1,8 +1,27 @@
 import type { NextConfig } from "next";
 
+/**
+ * SourceSignal runs as two deployments of the same codebase:
+ *
+ *   - Vercel (frontend): `BACKEND_URL` points at the VPS API and `/api/*` is
+ *     rewritten there. No database or secret credentials live on Vercel.
+ *   - VPS (API): `BACKEND_URL` is unset, so API routes are served locally and
+ *     the app runs in standalone mode behind Caddy.
+ */
+const backendUrl = (
+  process.env.BACKEND_URL ?? process.env.API_BACKEND_URL
+)
+  ?.trim()
+  .replace(/\/+$/, "");
+
+const appOrigin =
+  process.env.APP_ORIGIN?.trim() ||
+  (process.env.NODE_ENV === "development"
+    ? "http://localhost:3000"
+    : "https://app.sourcesignal.site");
+
 const nextConfig: NextConfig = {
-  /* config options here */
-  output: "standalone",
+  ...(process.env.VERCEL ? {} : { output: "standalone" }),
   turbopack: {
     rules: {
       "*.css": {
@@ -11,6 +30,22 @@ const nextConfig: NextConfig = {
       },
     },
   },
+
+  async rewrites() {
+    if (!backendUrl) {
+      // VPS deployment: serve API routes from this process.
+      return [];
+    }
+
+    // Frontend deployment: proxy API traffic (including SSE) to the VPS.
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${backendUrl}/api/:path*`,
+      },
+    ];
+  },
+
   async headers() {
     return [
       {
@@ -18,7 +53,11 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Access-Control-Allow-Origin",
-            value: "https://sourcesignal.site, http://localhost:3000",
+            value: appOrigin,
+          },
+          {
+            key: "Vary",
+            value: "Origin",
           },
           {
             key: "Access-Control-Allow-Methods",
@@ -26,7 +65,8 @@ const nextConfig: NextConfig = {
           },
           {
             key: "Access-Control-Allow-Headers",
-            value: "Content-Type, Authorization, Stripe-Signature, X-SourceSignal-Signature",
+            value:
+              "Content-Type, Authorization, Stripe-Signature, X-SourceSignal-Signature",
           },
           {
             key: "Access-Control-Allow-Credentials",

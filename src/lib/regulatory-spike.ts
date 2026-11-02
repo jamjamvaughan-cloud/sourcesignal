@@ -13,8 +13,7 @@
  *   4. Sector Regulatory Exposure — which sectors face upcoming mandates
  */
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getAdminPb = async () => null as any;
+import { query } from "@/lib/db";
 import { error, info } from "@/lib/logger";
 import type { CountryCode } from "@/types";
 
@@ -189,33 +188,27 @@ async function fetchTenderCounts(
   sector: string,
   country: CountryCode,
 ): Promise<{ last7Days: number; last30Days: number }> {
-  const pb = await getAdminPb();
-  if (!pb) {
-    error("regulatory_spike", {
-      error: "PocketBase unavailable for regulatory spike fetch",
-    });
-    return { last7Days: 0, last30Days: 0 };
-  }
-
-  const now = Date.now();
-  const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
-
   try {
-    const [recent7, recent30] = await Promise.all([
-      pb.collection("opportunities").getFullList({
-        filter: `sector = "${sector}" && region = "${country}" && created >= "${sevenDaysAgo}"`,
-        fields: "id",
-      }),
-      pb.collection("opportunities").getFullList({
-        filter: `sector = "${sector}" && region = "${country}" && created >= "${thirtyDaysAgo}"`,
-        fields: "id",
-      }),
-    ]);
+    const result = await query(
+      `SELECT
+         COUNT(*) FILTER (
+           WHERE created_at >= NOW() - INTERVAL '7 days'
+         ) AS last7,
+         COUNT(*) AS last30
+       FROM opportunities
+       WHERE sector = $1
+         AND country = $2
+         AND created_at >= NOW() - INTERVAL '30 days'`,
+      [sector, country],
+    );
+
+    const row = result.rows[0] as
+      | { last7: string; last30: string }
+      | undefined;
 
     return {
-      last7Days: recent7.length,
-      last30Days: recent30.length,
+      last7Days: Number(row?.last7 ?? 0),
+      last30Days: Number(row?.last30 ?? 0),
     };
   } catch (err) {
     error("regulatory_spike", {
@@ -286,7 +279,9 @@ export async function getRegulatorySpikes(): Promise<RegulatorySpike[]> {
 
     const volumeSpikePct =
       last30Days > 0
-        ? Math.round(((last7Days * (30 / 7)) - last30Days) / last30Days) * 100
+        ? Math.round(
+            (((last7Days * (30 / 7)) - last30Days) / last30Days) * 100,
+          )
         : last7Days > 0
           ? 100
           : 0;

@@ -3,30 +3,43 @@
  *
  * POST /api/alerts/evaluate
  *
- * Evaluates all enabled alerts against newly ingested or updated
- * opportunities. Idempotent: avoids sending duplicate alerts for the same
- * (alert, opportunity) pair by checking existing alert_deliveries.
+ * Evaluates all active alerts against opportunities updated in the last
+ * 24 hours. Idempotent: avoids duplicate deliveries for the same
+ * (alert, opportunity) pair by checking existing `alert_deliveries`.
  *
- * Server-side only. Can be triggered by a cron job or the ingestion worker.
+ * Runs entirely against PostgreSQL. Can be triggered by a cron job or the
+ * ingestion worker.
  */
 
 import { NextResponse } from "next/server";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getAdminPb = async () => null as any;
+import { query } from "@/lib/db";
 import { emailDelivery } from "@/lib/email-delivery";
+import { parseAlertFilters } from "@/lib/alert-filters";
 import { info, error } from "@/lib/logger";
 
-export async function POST(): Promise<NextResponse> {
-  const pb = await getAdminPb();
-  if (!pb) {
-    return NextResponse.json({ error: "Service unavailable." }, { status: 503 });
-  }
+interface AlertRow {
+  id: string;
+  query_filters: unknown;
+  email: string | null;
+}
 
+interface OpportunityRow {
+  id: string;
+  title: string | null;
+  summary: string | null;
+  sector: string | null;
+  region: string | null;
+}
+
+export async function POST(): Promise<NextResponse> {
   try {
-    // Fetch all enabled alerts.
-    const alerts = await pb.collection("alerts").getFullList({
-      filter: "enabled = true",
-    });
+    const alertResult = await query(
+      `SELECT a.id, a.query_filters, u.email
+         FROM alerts a
+         JOIN users u ON u.id = a.user_id
+        WHERE a.is_active = TRUE`,
+    );
+    const alerts = alertResult.rows as AlertRow[];
 
     if (alerts.length === 0) {
       info("alert_evaluation", { alertsEvaluated: 0, deliveriesSent: 0 });
@@ -37,96 +50,76 @@ export async function POST(): Promise<NextResponse> {
       });
     }
 
-    // Fetch recently updated opportunities (last 24 hours by default).
-    const twentyFourHoursAgo = new Date(
-      Date.now() - 24 * 60 * 60 * 1000,
-    ).toISOString();
+    const opportunityResult = await query(
+      `SELECT id, title, summary, sector, region
+         FROM opportunities
+        WHERE updated_at >= NOW() - INTERVAL '24 hours'
+          AND is_demonstration = FALSE`,
+    );
+    const opportunities = opportunityResult.rows as OpportunityRow[];
 
-    const opportunities = await pb.collection("opportunities").getFullList({
-      filter: `updated >= "${twentyFourHoursAgo}" && is_demonstration = false`,
-    });
-
-    // Fetch existing alert deliveries to avoid duplicates.
-    const existingDeliveries = await pb.collection("alert_deliveries").getFullList();
+    const deliveredResult = await query(
+      `SELECT alert_id, opportunity_id FROM alert_deliveries`,
+    );
     const deliveredKeys = new Set(
-      existingDeliveries.map(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (d: any) => `${d.alert}-${d.opportunity}`,
+      deliveredResult.rows.map(
+        (row) => `${row.alert_id as string}:${row.opportunity_id as string}`,
       ),
     );
 
     let deliveriesSent = 0;
 
     for (const alert of alerts) {
-      const alertSectors = (alert.sectors as string[]) || [];
-      const alertRegions = (alert.regions as string[]) || [];
-      const alertKeywords = (alert.keywords as string) || "";
+      const filters = parseAlertFilters(alert.query_filters);
+      const keywords = filters.keywords
+        .split(",")
+        .map((keyword) => keyword.trim().toLowerCase())
+        .filter(Boolean);
 
-      for (const opp of opportunities) {
-        const opportunity = opp as Record<string, unknown>;
-
-        // Sector filter.
+      for (const opportunity of opportunities) {
         if (
-          alertSectors.length > 0 &&
-          !alertSectors.includes(opportunity.sector as string)
+          filters.sectors.length > 0 &&
+          (!opportunity.sector ||
+            !filters.sectors.includes(opportunity.sector))
         ) {
           continue;
         }
 
-        // Region filter.
         if (
-          alertRegions.length > 0 &&
-          !alertRegions.includes(opportunity.region as string)
+          filters.regions.length > 0 &&
+          (!opportunity.region ||
+            !filters.regions.includes(opportunity.region))
         ) {
           continue;
         }
 
-        // Keyword filter (matches title or summary).
-        if (alertKeywords) {
-          const keywords = alertKeywords
-            .split(",")
-            .map((k) => k.trim().toLowerCase())
-            .filter(Boolean);
-          const title = (opportunity.title as string) || "";
-          const summary = (opportunity.summary as string) || "";
-          const haystack = `${title} ${summary}`.toLowerCase();
-          if (!keywords.some((k) => haystack.includes(k))) {
+        if (keywords.length > 0) {
+          const haystack =
+            `${opportunity.title ?? ""} ${opportunity.summary ?? ""}`.toLowerCase();
+          if (!keywords.some((keyword) => haystack.includes(keyword))) {
             continue;
           }
         }
 
-        const dedupKey = `${alert.id}-${opportunity.id}`;
+        const dedupKey = `${alert.id}:${opportunity.id}`;
         if (deliveredKeys.has(dedupKey)) {
-          continue; // Already delivered for this alert+opportunity.
+          continue;
         }
 
-        // Send alert (queued if no provider configured).
-        // Expand the user relation to get the recipient email dynamically.
-        const alertWithUser = await pb.collection("alerts").getOne(alert.id, {
-          expand: "user",
-        });
-        const recipient =
-          (alertWithUser.expand?.user as Record<string, unknown>)?.email ??
-          "user@example.com";
         const result = await emailDelivery.sendAlert({
           alertId: alert.id,
-          opportunityId: opportunity.id as string,
-          to: recipient as string,
-          subject: `New opportunity: ${opportunity.title}`,
-          text: `A new ${opportunity.sector} opportunity in ${opportunity.region}: ${opportunity.title}`,
-        });
-
-        await pb.collection("alert_deliveries").create({
-          alert: alert.id,
-          opportunity: opportunity.id,
-          delivered_at: new Date().toISOString(),
-          status: result.status === "sent" ? "sent" : "queued",
-          provider: "email",
-          external_id: result.messageId,
+          opportunityId: opportunity.id,
+          to: alert.email ?? "",
+          subject: `New opportunity: ${opportunity.title ?? "Untitled"}`,
+          text: `A new ${opportunity.sector ?? "sector"} opportunity in ${
+            opportunity.region ?? "your region"
+          }: ${opportunity.title ?? "Untitled"}`,
         });
 
         deliveredKeys.add(dedupKey);
-        deliveriesSent++;
+        if (result.status === "sent") {
+          deliveriesSent++;
+        }
       }
     }
 
@@ -138,11 +131,16 @@ export async function POST(): Promise<NextResponse> {
 
     return NextResponse.json({
       evaluated: alerts.length,
+      opportunitiesChecked: opportunities.length,
       deliveriesSent,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Alert evaluation failed.";
-    error("alert_evaluation", { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    error("alert_evaluation", {
+      error: err instanceof Error ? err.stack ?? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: "Alert evaluation failed." },
+      { status: 500 },
+    );
   }
 }

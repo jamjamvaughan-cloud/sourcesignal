@@ -11,8 +11,7 @@
  * in other countries before local competitors spot the trend.
  */
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getAdminPb = async () => null as any;
+import { query } from "@/lib/db";
 import { error, info } from "@/lib/logger";
 import type { CountryCode } from "@/types";
 
@@ -153,38 +152,31 @@ async function fetchRecentOpportunities(lookbackDays: number = 90): Promise<Arra
   buyer_canonical_id: string | null;
   sector: string | null;
   region: string | null;
-  created: string | null;
+  country: string | null;
+  created_at: string | null;
 }>> {
-  const pb = await getAdminPb();
-  if (!pb) {
-    error("cross_border_matchmaker", {
-      error: "PocketBase unavailable for cross-border match fetch",
-    });
-    return [];
-  }
-
-  const cutoffDate = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString();
-
   try {
-    const records = await pb.collection("opportunities").getFullList({
-      filter: `created >= "${cutoffDate}"`,
-      fields:
-        "id,canonical_id,title,summary,buyer,buyer_canonical_id,sector,region,created",
-      sort: "-created",
-      limit: 500,
-    });
+    const records = await query(
+      `SELECT id, canonical_id, title, summary, buyer, buyer_canonical_id,
+              sector, region, country, created_at
+         FROM opportunities
+        WHERE created_at >= NOW() - ($1 || ' days')::interval
+        ORDER BY created_at DESC
+        LIMIT 500`,
+      [lookbackDays],
+    );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return records.map((item: any) => ({
-      id: item.id,
+    return records.rows.map((item) => ({
+      id: item.id as string,
       canonical_id: item.canonical_id as string,
       title: item.title as string,
-      summary: item.summary as string | null,
-      buyer: item.buyer as string | null,
-      buyer_canonical_id: item.buyer_canonical_id as string | null,
-      sector: item.sector as string | null,
-      region: item.region as string | null,
-      created: item.created as string | null,
+      summary: (item.summary as string | null) ?? null,
+      buyer: (item.buyer as string | null) ?? null,
+      buyer_canonical_id: (item.buyer_canonical_id as string | null) ?? null,
+      sector: (item.sector as string | null) ?? null,
+      region: (item.region as string | null) ?? null,
+      country: (item.country as string | null) ?? null,
+      created_at: (item.created_at as string | null) ?? null,
     }));
   } catch (err) {
     error("cross_border_matchmaker", {
@@ -224,7 +216,10 @@ export async function getCrossBorderMatches(): Promise<CrossBorderMatch[]> {
       // Check if there are recent opportunities from the equivalent buyer
       // in the target country (pattern replication detection).
       const targetCountryOpps = opportunities.filter(
-        (o) => o.region === equiv.country || o.buyer?.toLowerCase().includes(equiv.buyer.toLowerCase()),
+        (o) =>
+          o.country === equiv.country ||
+          o.region === equiv.country ||
+          o.buyer?.toLowerCase().includes(equiv.buyer.toLowerCase()),
       );
 
       const patternReplication = targetCountryOpps.length > 0 && rfpStructure.length > 0;
@@ -248,7 +243,8 @@ export async function getCrossBorderMatches(): Promise<CrossBorderMatch[]> {
       if (matchTag) {
         matches.push({
           sourceBuyer: sourceOpp.buyer ?? sourceKey,
-          sourceCountry: sourceOpp.region as CountryCode,
+          sourceCountry: (sourceOpp.country ??
+            sourceOpp.region) as CountryCode,
           sourceSector: sourceOpp.sector ?? "",
           sourceOpportunityId: sourceOpp.canonical_id,
           sourceTitle: sourceOpp.title,

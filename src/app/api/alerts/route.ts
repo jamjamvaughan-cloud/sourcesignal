@@ -8,40 +8,45 @@
  *
  * All operations are owner-scoped: users can only access their own alerts.
  * Alerts are a Pro feature; Free users cannot create or manage alerts.
+ *
+ * Stored in PostgreSQL:
+ *   alerts.query_filters JSONB → { sectors, regions, keywords }
+ *   alerts.is_active          → the API's `enabled` flag
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getAdminPb = async () => null as any;
+import { query } from "@/lib/db";
+import { getCurrentUser, getUserPlanId } from "@/lib/auth";
 import { entitlementsFor } from "@/lib/entitlements";
-import { isValidSectorId, isValidRegion } from "@/lib/config";
-import type { PlanId } from "@/lib/entitlements";
+import {
+  EMPTY_ALERT_FILTERS,
+  parseAlertFilters,
+  validateAlertFilters,
+} from "@/lib/alert-filters";
+import { error } from "@/lib/logger";
 
-async function getUserPlanId(userId: string): Promise<PlanId> {
-  const pb = await getAdminPb();
-  if (!pb) return "free";
-  try {
-    const memberships = await pb.collection("memberships").getList(1, 1, {
-      filter: `user = "${userId}"`,
-    });
-    if (memberships.items.length === 0) {
-      return "free";
-    }
-    const membership = memberships.items[0];
-    const org = await pb.collection("organisations").getOne(membership.organisation);
-    return ((org as Record<string, unknown>).plan as PlanId) ?? "free";
-  } catch {
-    return "free";
-  }
+const MAX_ALERTS = 50;
+
+interface AlertRow {
+  id: string;
+  name: string;
+  query_filters: unknown;
+  is_active: boolean;
+  created_at: string | Date;
+  last_triggered: string | Date | null;
+}
+
+function toIso(value: string | Date | null): string | null {
+  if (value == null) return null;
+  return value instanceof Date ? value.toISOString() : value;
 }
 
 async function requireUserAndEntitlements(
   request: NextRequest,
-): Promise<{
-  userId: string;
-  entitlements: ReturnType<typeof entitlementsFor>;
-} | NextResponse> {
+): Promise<
+  | { userId: string; entitlements: ReturnType<typeof entitlementsFor> }
+  | NextResponse
+> {
   const cookieHeader = request.headers.get("cookie");
   const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
   if (!user) {
@@ -66,34 +71,47 @@ export async function GET(request: NextRequest) {
   if (result instanceof NextResponse) return result;
   const { userId } = result;
 
-  const pb = await getAdminPb();
-  if (!pb) {
-    return NextResponse.json({ error: "Service unavailable." }, { status: 503 });
-  }
-
   try {
-    const records = await pb.collection("alerts").getList(1, 50, {
-      filter: `user = "${userId}"`,
-      sort: "-created_at",
+    const rows = await query(
+      `SELECT a.id,
+              a.name,
+              a.query_filters,
+              a.is_active,
+              a.created_at,
+              (SELECT MAX(d.delivered_at)
+                 FROM alert_deliveries d
+                WHERE d.alert_id = a.id) AS last_triggered
+         FROM alerts a
+        WHERE a.user_id = $1
+        ORDER BY a.created_at DESC
+        LIMIT $2`,
+      [userId, MAX_ALERTS],
+    );
+
+    const items = (rows.rows as AlertRow[]).map((row) => {
+      const filters = parseAlertFilters(row.query_filters);
+      return {
+        id: row.id,
+        name: row.name,
+        sectors: filters.sectors,
+        regions: filters.regions,
+        keywords: filters.keywords,
+        enabled: row.is_active,
+        lastTriggered: toIso(row.last_triggered),
+        createdAt: toIso(row.created_at),
+      };
     });
 
-    return NextResponse.json({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      items: records.items.map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        sectors: item.sectors,
-        regions: item.regions,
-        keywords: item.keywords,
-        enabled: item.enabled,
-        lastTriggered: item.last_triggered,
-        createdAt: item.created_at,
-      })),
-      total: records.totalItems,
-    });
+    return NextResponse.json({ items, total: items.length });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Failed to list alerts.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    error("alerts_list_failed", {
+      userId,
+      error: err instanceof Error ? err.stack ?? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: "Unable to load alerts." },
+      { status: 500 },
+    );
   }
 }
 
@@ -102,53 +120,51 @@ export async function POST(request: NextRequest) {
   if (result instanceof NextResponse) return result;
   const { userId } = result;
 
-  const body = await request.json().catch(() => ({}));
-  const { name, sectors, regions, keywords, enabled } = body;
+  const body = (await request.json().catch(() => ({}))) as Record<
+    string,
+    unknown
+  >;
+  const { name, enabled } = body;
 
-  if (!name || typeof name !== "string") {
-    return NextResponse.json({ error: "Alert name is required." }, { status: 400 });
-  }
-
-  // Validate sector and region values.
-  if (sectors && Array.isArray(sectors)) {
-    for (const s of sectors) {
-      if (!isValidSectorId(s)) {
-        return NextResponse.json({ error: `Invalid sector: ${s}` }, { status: 400 });
-      }
-    }
-  }
-  if (regions && Array.isArray(regions)) {
-    for (const r of regions) {
-      if (!isValidRegion(r)) {
-        return NextResponse.json({ error: `Invalid region: ${r}` }, { status: 400 });
-      }
-    }
+  if (typeof name !== "string" || !name.trim()) {
+    return NextResponse.json(
+      { error: "Alert name is required." },
+      { status: 400 },
+    );
   }
 
-  const pb = await getAdminPb();
-  if (!pb) {
-    return NextResponse.json({ error: "Service unavailable." }, { status: 503 });
+  const validation = validateAlertFilters({
+    sectors: body.sectors,
+    regions: body.regions,
+    keywords: body.keywords,
+  });
+  if (!validation.ok) {
+    return NextResponse.json({ error: validation.error }, { status: 400 });
   }
+
+  const filters = { ...EMPTY_ALERT_FILTERS, ...validation.filters };
 
   try {
-    const record = await pb.collection("alerts").create({
-      user: userId,
-      name,
-      sectors: sectors || [],
-      regions: regions || [],
-      keywords: keywords || "",
-      enabled: enabled !== false,
-      last_triggered: null,
-      created_at: new Date().toISOString(),
-    });
+    const inserted = await query(
+      `INSERT INTO alerts (user_id, name, query_filters, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3::jsonb, $4, NOW(), NOW())
+       RETURNING id, name, is_active`,
+      [userId, name.trim(), JSON.stringify(filters), enabled !== false],
+    );
 
-    return NextResponse.json({
-      id: record.id,
-      name: record.name,
-      enabled: record.enabled,
-    });
+    const row = inserted.rows[0];
+    return NextResponse.json(
+      { id: row.id, name: row.name, enabled: row.is_active },
+      { status: 201 },
+    );
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Failed to create alert.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    error("alert_create_failed", {
+      userId,
+      error: err instanceof Error ? err.stack ?? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: "Unable to create the alert." },
+      { status: 500 },
+    );
   }
 }

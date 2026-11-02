@@ -1,3 +1,4 @@
+import './load-env';
 import { query, pool } from '../src/lib/db';
 import bcrypt from 'bcryptjs';
 

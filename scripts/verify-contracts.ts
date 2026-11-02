@@ -1,3 +1,4 @@
+import "./load-env";
 import { pool } from "../src/lib/db";
 
 const checks: Array<[string, string, unknown[]?]> = [

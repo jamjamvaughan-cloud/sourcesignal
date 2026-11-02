@@ -1,37 +1,72 @@
-"use server";
+/**
+ * Authentication API for dynamic actions.
+ *
+ * POST /api/auth/signin   — verify credentials and issue a session cookie
+ * POST /api/auth/signup   — create an account (static route also exists)
+ * POST /api/auth/signout  — clear the session cookie and stored session
+ * GET  /api/auth/me       — resolve the current session's user + plan
+ */
 
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { query, withTransaction } from "@/lib/db";
 import { deleteSession, getSession, setSession } from "@/lib/redis";
 import {
   SESSION_TTL,
   buildSessionCookie,
   clearSessionCookie,
+  getCurrentUser,
+  getUserPlanId,
   readSessionToken,
 } from "@/lib/auth";
 import { rateLimitResponse } from "@/lib/rate-limit";
+import { error, info } from "@/lib/logger";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
 
-const AUTH_RATE_LIMIT = { max: 10, windowMs: 60 * 1000 };
+const AUTH_RATE_LIMIT = { max: 20, windowMs: 60 * 1000 };
 const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
+const SUPPORTED_COUNTRIES = new Set(["UK", "US", "CA", "IE", "AU", "EU"]);
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * CSRF guard: verify Origin header matches the request host for mutations.
+ * CSRF guard: verify the Origin header matches the request host for mutations.
  */
 function csrfGuard(request: NextRequest): NextResponse | null {
   const origin = request.headers.get("origin");
-  const host = request.headers.get("host");
-  if (!origin || !host) {
+  if (!origin) {
     return null;
   }
+
+  let originHost: string;
   try {
-    const originHost = new URL(origin).host;
-    if (originHost !== host) {
-      return NextResponse.json({ error: "CSRF token mismatch." }, { status: 403 });
-    }
+    originHost = new URL(origin).host;
   } catch {
     return NextResponse.json({ error: "Invalid Origin header." }, { status: 400 });
+  }
+
+  // The browser talks to the frontend origin, but the API request may arrive
+  // directly (api.sourcesignal.site) or via the Vercel rewrite. Accept any host
+  // that the reverse proxy reports for this request plus the configured app
+  // origin. Comparing only against `Host` would reject the proxied hop.
+  const allowedHosts = new Set<string>();
+  for (const raw of [
+    request.headers.get("x-forwarded-host"),
+    request.headers.get("host"),
+  ]) {
+    const value = raw?.split(",")[0]?.trim();
+    if (value) allowedHosts.add(value);
+  }
+  for (const raw of [process.env.APP_ORIGIN, process.env.NEXT_PUBLIC_APP_URL]) {
+    if (!raw) continue;
+    try {
+      allowedHosts.add(new URL(raw).host);
+    } catch {
+      // Ignore malformed configuration; it cannot widen the allow-list.
+    }
+  }
+
+  if (allowedHosts.size > 0 && !allowedHosts.has(originHost)) {
+    return NextResponse.json({ error: "CSRF token mismatch." }, { status: 403 });
   }
   return null;
 }
@@ -50,6 +85,11 @@ function validatePassword(password: string): string | null {
     return "Password must contain at least one digit.";
   }
   return null;
+}
+
+function normaliseCountry(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return SUPPORTED_COUNTRIES.has(raw) ? raw : "UK";
 }
 
 export async function POST(
@@ -74,87 +114,116 @@ export async function POST(
 
   switch (action) {
     case "signup": {
-      const { email, password, passwordConfirm, organisationName, country } = body;
-      if (!email || !password || !passwordConfirm) {
+      const { email, password, passwordConfirm, organisationName, country } =
+        body as Record<string, unknown>;
+
+      const normalizedEmail =
+        typeof email === "string" ? email.toLowerCase().trim() : "";
+      const passwordValue = typeof password === "string" ? password : "";
+
+      if (!normalizedEmail || !passwordValue) {
         return NextResponse.json(
-          { error: "Email, password and password confirmation are required." },
+          { error: "Email and password are required." },
           { status: 400 },
         );
       }
-      if (password !== passwordConfirm) {
+      if (!EMAIL_PATTERN.test(normalizedEmail)) {
+        return NextResponse.json(
+          { error: "Please enter a valid email address." },
+          { status: 400 },
+        );
+      }
+      if (
+        typeof passwordConfirm === "string" &&
+        passwordConfirm !== passwordValue
+      ) {
         return NextResponse.json(
           { error: "Passwords do not match." },
           { status: 400 },
         );
       }
-      const passwordError = validatePassword(password);
+      const passwordError = validatePassword(passwordValue);
       if (passwordError) {
         return NextResponse.json({ error: passwordError }, { status: 400 });
       }
 
       try {
-        const normalizedEmail = email.toLowerCase().trim();
-
-        // Check if user already exists
         const existing = await query(
           `SELECT id FROM users WHERE email = $1`,
           [normalizedEmail],
         );
         if ((existing.rowCount ?? 0) > 0) {
-          return NextResponse.json({ error: "Email already registered." }, { status: 409 });
-        }
-
-        // Hash password
-        const passwordHash = await bcrypt.hash(password, 10);
-
-        // Insert user
-        const userResult = await query(
-          `INSERT INTO users (id, email, password_hash, subscription_tier, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, 'free', NOW(), NOW())
-           RETURNING id, email, subscription_tier`,
-          [normalizedEmail, passwordHash],
-        );
-
-        const userId = userResult.rows[0].id;
-
-        // Create organisation if organisation name provided
-        let organisationId: string | null = null;
-        if (organisationName) {
-          const slugBase =
-            organisationName
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, "-")
-              .replace(/^-|-$/g, "") || "workspace";
-          const orgResult = await query(
-            `INSERT INTO organisations (name, slug, plan, country, owner_id, created_by, created_at, updated_at)
-             VALUES ($1, $2, 'free', $3, $4, $4, NOW(), NOW())
-             RETURNING id`,
-            [organisationName, `${slugBase}-${userId.slice(0, 8)}`, country ?? "UK", userId],
-          );
-          organisationId = orgResult.rows[0].id;
-          await query(
-            `INSERT INTO memberships (organisation_id, user_id, role, created_at, updated_at)
-             VALUES ($1, $2, 'owner', NOW(), NOW())`,
-            [organisationId, userId],
+          return NextResponse.json(
+            { error: "Email already registered." },
+            { status: 409 },
           );
         }
 
-        // Create JWT session token and persist it in the session store so
-        // /api/auth/me can resolve the identity on the next request.
-        const token = await sign(
-          { userId, email: normalizedEmail },
+        const passwordHash = await bcrypt.hash(passwordValue, 10);
+
+        const created = await withTransaction(async (client) => {
+          const userResult = await client.query(
+            `INSERT INTO users (email, password_hash, subscription_tier, created_at, updated_at)
+             VALUES ($1, $2, 'free', NOW(), NOW())
+             RETURNING id, email, subscription_tier`,
+            [normalizedEmail, passwordHash],
+          );
+          const userId = userResult.rows[0].id as string;
+
+          let organisationId: string | null = null;
+          const orgName =
+            typeof organisationName === "string"
+              ? organisationName.trim()
+              : "";
+
+          if (orgName) {
+            const slugBase =
+              orgName
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/^-|-$/g, "") || "workspace";
+            const orgResult = await client.query(
+              `INSERT INTO organisations (name, slug, plan, country, owner_id, created_by, created_at, updated_at)
+               VALUES ($1, $2, 'free', $3, $4, $4, NOW(), NOW())
+               RETURNING id`,
+              [
+                orgName,
+                `${slugBase}-${userId.slice(0, 8)}`,
+                normaliseCountry(country),
+                userId,
+              ],
+            );
+            organisationId = orgResult.rows[0].id as string;
+
+            await client.query(
+              `INSERT INTO memberships (organisation_id, user_id, role, created_at, updated_at)
+               VALUES ($1, $2, 'owner', NOW(), NOW())`,
+              [organisationId, userId],
+            );
+
+            await client.query(
+              `UPDATE users SET organisation_id = $1, updated_at = NOW() WHERE id = $2`,
+              [organisationId, userId],
+            );
+          }
+
+          return { userId, email: normalizedEmail, organisationId };
+        });
+
+        const token = sign(
+          { userId: created.userId, email: created.email },
           JWT_SECRET,
           { expiresIn: SESSION_TTL },
         );
         await setSession(
           token,
-          { userId, email: normalizedEmail },
+          { userId: created.userId, email: created.email },
           SESSION_TTL,
         );
 
         const response = NextResponse.json({
-          user: { id: userId, email: normalizedEmail },
-          organisationId,
+          user: { id: created.userId, email: created.email },
+          organisationId: created.organisationId,
           plan: "free",
         });
         response.headers.set(
@@ -163,14 +232,21 @@ export async function POST(
         );
         return response;
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Signup failed.";
-        return NextResponse.json({ error: message }, { status: 400 });
+        error("auth_signup_failed", {
+          error: err instanceof Error ? err.stack ?? err.message : String(err),
+          email: normalizedEmail,
+        });
+        return NextResponse.json({ error: "Signup failed." }, { status: 500 });
       }
     }
 
     case "signin": {
-      const { email, password } = body;
-      if (!email || !password) {
+      const { email, password } = body as Record<string, unknown>;
+      const normalizedEmail =
+        typeof email === "string" ? email.toLowerCase().trim() : "";
+      const passwordValue = typeof password === "string" ? password : "";
+
+      if (!normalizedEmail || !passwordValue) {
         return NextResponse.json(
           { error: "Email and password are required." },
           { status: 400 },
@@ -178,37 +254,44 @@ export async function POST(
       }
 
       try {
-        const normalizedEmail = email.toLowerCase().trim();
         const userResult = await query(
           `SELECT id, email, password_hash, subscription_tier FROM users WHERE email = $1`,
           [normalizedEmail],
         );
 
         if (userResult.rowCount === 0) {
-          return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
+          return NextResponse.json(
+            { error: "Invalid email or password." },
+            { status: 401 },
+          );
         }
 
         const user = userResult.rows[0];
-        const passwordMatch = await bcrypt.compare(password, user.password_hash);
+        const passwordMatch = await bcrypt.compare(
+          passwordValue,
+          user.password_hash as string,
+        );
         if (!passwordMatch) {
-          return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
+          return NextResponse.json(
+            { error: "Invalid email or password." },
+            { status: 401 },
+          );
         }
 
-        // Create JWT session token and persist it in the session store.
-        const token = await sign(
+        const token = sign(
           { userId: user.id, email: user.email },
           JWT_SECRET,
           { expiresIn: SESSION_TTL },
         );
         await setSession(
           token,
-          { userId: user.id, email: user.email },
+          { userId: user.id as string, email: user.email as string },
           SESSION_TTL,
         );
 
         const response = NextResponse.json({
           user: { id: user.id, email: user.email },
-          plan: user.subscription_tier,
+          plan: await getUserPlanId(user.id as string),
         });
         response.headers.set(
           "Set-Cookie",
@@ -216,15 +299,25 @@ export async function POST(
         );
         return response;
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Sign in failed.";
-        return NextResponse.json({ error: message }, { status: 401 });
+        error("auth_signin_failed", {
+          error: err instanceof Error ? err.stack ?? err.message : String(err),
+          email: normalizedEmail,
+        });
+        return NextResponse.json(
+          { error: "Sign in is temporarily unavailable. Please try again." },
+          { status: 500 },
+        );
       }
     }
 
     case "signout": {
       const token = readSessionToken(request.headers.get("cookie"));
       if (token) {
-        await deleteSession(token);
+        await deleteSession(token).catch((err: unknown) => {
+          error("auth_signout_failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
       }
 
       const response = NextResponse.json({ ok: true });
@@ -247,41 +340,38 @@ export async function GET(
   }
 
   const cookieHeader = request.headers.get("cookie");
-  if (!cookieHeader) {
-    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-  }
-
-  const sessionId = readSessionToken(cookieHeader);
-  if (!sessionId) {
+  const user = await getCurrentUser(cookieHeader);
+  if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
   try {
-    const session = await getSession(sessionId);
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+    const sessionId = readSessionToken(cookieHeader);
+    if (sessionId) {
+      const session = await getSession(sessionId);
+      if (!session) {
+        return NextResponse.json(
+          { error: "Not authenticated." },
+          { status: 401 },
+        );
+      }
     }
 
-    const userResult = await query(
-      `SELECT u.id, u.email, u.subscription_tier, o.country
-       FROM users u
-       LEFT JOIN memberships m ON m.user_id = u.id
-       LEFT JOIN organisations o ON o.id = m.organisation_id
-       WHERE u.id = $1`,
-      [session.userId],
-    );
+    const plan = await getUserPlanId(user.id);
+    info("auth_me", { userId: user.id, plan });
 
-    if (userResult.rowCount === 0) {
-      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-    }
-
-    const user = userResult.rows[0];
     return NextResponse.json({
       user: { id: user.id, email: user.email, country: user.country ?? null },
-      plan: user.subscription_tier,
+      plan,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Session check failed.";
-    return NextResponse.json({ error: message }, { status: 401 });
+    error("auth_me_failed", {
+      userId: user.id,
+      error: err instanceof Error ? err.stack ?? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: "Session check failed. Please try again." },
+      { status: 500 },
+    );
   }
 }

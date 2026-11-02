@@ -1,26 +1,10 @@
-import { headers } from "next/headers";
-import { getCurrentUser } from "@/lib/auth";
-import { getUserPlanIdFromPB } from "@/lib/auth";
-import { type PlanId } from "@/lib/entitlements";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { canConfigureIntegrations, getUpgradeMessage } from "@/lib/tier-gating";
-
-async function getUserPlanId(): Promise<PlanId> {
-  const headersList = await headers();
-  const cookieHeader = headersList.get("cookie");
-  const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
-  if (!user) return "free";
-  return getUserPlanIdFromPB(user.id);
-}
+import { getSessionContext } from "@/lib/backend";
 
 export default async function IntegrationsPage() {
-  const planId = await getUserPlanId();
-
-  const headersList = await headers();
-  const cookieHeader = headersList.get("cookie");
-  const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
-
+  const { planId, user } = await getSessionContext();
   const canIntegrations = canConfigureIntegrations(planId);
 
   if (!canIntegrations) {

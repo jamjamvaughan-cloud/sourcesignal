@@ -4,46 +4,16 @@
  * GET    /api/opportunities — list with filters (entitlement-sanitized)
  * GET    /api/opportunities/:id — single opportunity (entitlement-sanitized)
  *
- * The caller's plan/entitlements are derived from their verified PocketBase
- * session and organisation membership — never from client-supplied parameters.
+ * The caller's plan/entitlements are derived from their verified session and
+ * organisation membership — never from client-supplied parameters.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getAdminPb = async () => null as any;
+import { getCurrentUser, getUserPlanId } from "@/lib/auth";
 import { listOpportunities } from "@/lib/opportunities";
 import { entitlementsFor } from "@/lib/entitlements";
 import { rateLimitResponse } from "@/lib/rate-limit";
 import type { PlanId } from "@/lib/entitlements";
-
-/**
- * Resolve the authenticated user's TRUE plan from their organisation
- * membership in PocketBase. Never assume authenticated == Pro.
- */
-async function getUserPlanId(
-  userId: string,
-): Promise<PlanId> {
-  const pb = await getAdminPb();
-  if (!pb) {
-    return "free";
-  }
-  try {
-    const memberships = await pb.collection("memberships").getList(1, 1, {
-      filter: `user = "${userId}"`,
-    });
-    if (memberships.items.length === 0) {
-      return "free";
-    }
-    const membership = memberships.items[0];
-    const org = await pb.collection("organisations").getOne(
-      membership.organisation,
-    );
-    return ((org as Record<string, unknown>).plan as PlanId) ?? "free";
-  } catch {
-    return "free";
-  }
-}
 
 async function getEntitlements(
   request: NextRequest,

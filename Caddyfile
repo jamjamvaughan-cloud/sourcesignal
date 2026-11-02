@@ -1,0 +1,25 @@
+# Caddy reverse proxy for the SourceSignal API.
+#
+# DNS: api.sourcesignal.site -> this VPS (A record).
+# Caddy obtains and renews the TLS certificate automatically.
+#
+# The Vercel frontend proxies /api/* to this host. Stripe webhooks also hit
+# this host directly.
+
+api.sourcesignal.site {
+	encode zstd gzip
+
+	reverse_proxy api:3000 {
+		# Do not buffer Server-Sent Events (/api/signals/stream).
+		flush_interval -1
+	}
+
+	header {
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

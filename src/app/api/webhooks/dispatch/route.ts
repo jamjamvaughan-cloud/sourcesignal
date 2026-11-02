@@ -4,35 +4,33 @@
  * POST /api/webhooks/dispatch
  *
  * Dispatches newly extracted high-value opportunities to user-configured
- * webhook endpoints (Slack, HubSpot, Salesforce, custom). Pro subscribers
- * only. Server-authorised.
+ * webhook endpoints (Slack, Teams, Zapier, custom). Pro subscribers only.
+ * Server-authorised and SSRF-guarded.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac } from "crypto";
-import { getCurrentUser } from "@/lib/auth";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getAdminPb = async () => null as any;
+import { query } from "@/lib/db";
+import { getCurrentUser, getUserPlanId } from "@/lib/auth";
 import { entitlementsFor } from "@/lib/entitlements";
-import type { PlanId } from "@/lib/entitlements";
 import { error } from "@/lib/logger";
 import { isSafeDispatchUrl } from "@/lib/webhooks";
 
 async function requirePro(
   request: NextRequest,
-): Promise<{
-  userId: string;
-  entitlements: ReturnType<typeof entitlementsFor>;
-} | NextResponse> {
+): Promise<
+  | { userId: string; entitlements: ReturnType<typeof entitlementsFor> }
+  | NextResponse
+> {
   const cookieHeader = request.headers.get("cookie");
   const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
   if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
-  const planId = "pro" as PlanId;
+  const planId = await getUserPlanId(user.id);
   const entitlements = entitlementsFor(planId);
-  if (!entitlements.exportsEnabled) {
+  if (!entitlements.alertsEnabled) {
     return NextResponse.json(
       { error: "Webhook dispatch requires a Pro subscription." },
       { status: 403 },
@@ -47,10 +45,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (result instanceof NextResponse) return result;
   const { userId } = result;
 
-  const body = await request.json().catch(() => ({}));
-  const { opportunityId, webhookUrl, eventType = "opportunity.new" } = body;
+  const body = (await request.json().catch(() => ({}))) as Record<
+    string,
+    unknown
+  >;
+  const opportunityId = body.opportunityId;
+  const webhookUrl = body.webhookUrl;
+  const eventType =
+    typeof body.eventType === "string" ? body.eventType : "opportunity.new";
 
-  if (!opportunityId || !webhookUrl) {
+  if (typeof opportunityId !== "string" || typeof webhookUrl !== "string") {
     return NextResponse.json(
       { error: "opportunityId and webhookUrl are required." },
       { status: 400 },
@@ -61,12 +65,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     new URL(webhookUrl);
   } catch {
-    return NextResponse.json({ error: "Invalid webhook URL." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid webhook URL." },
+      { status: 400 },
+    );
   }
 
   // SSRF guard: reject private/reserved destination addresses.
   if (!isSafeDispatchUrl(webhookUrl)) {
-    return NextResponse.json({ error: "Webhook URL is not allowed." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Webhook URL is not allowed." },
+      { status: 400 },
+    );
   }
 
   const signingSecret = process.env.WEBHOOK_SIGNING_SECRET;
@@ -77,16 +87,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const pb = await getAdminPb();
-  if (!pb) {
-    return NextResponse.json({ error: "Service unavailable." }, { status: 503 });
-  }
-
   try {
     // Fetch the opportunity to dispatch.
-    const opportunity = await pb.collection("opportunities").getOne(opportunityId, {
-      fields: "id,title,buyer,sector,region,closing_date,estimated_value,currency,source_url",
-    });
+    const opportunityResult = await query(
+      `SELECT id, title, buyer, sector, region, closing_date,
+              estimated_value, currency, source_url
+         FROM opportunities
+        WHERE id = $1`,
+      [opportunityId],
+    );
+
+    if ((opportunityResult.rowCount ?? 0) === 0) {
+      return NextResponse.json(
+        { error: "Opportunity not found." },
+        { status: 404 },
+      );
+    }
+
+    const opportunity = opportunityResult.rows[0];
 
     const payload = {
       event: eventType,
@@ -97,7 +115,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         sector: opportunity.sector,
         region: opportunity.region,
         closing_date: opportunity.closing_date,
-        estimated_value: opportunity.estimated_value,
+        estimated_value:
+          opportunity.estimated_value != null
+            ? Number(opportunity.estimated_value)
+            : null,
         currency: opportunity.currency,
         source_url: opportunity.source_url,
       },
@@ -133,23 +154,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       };
     }
 
-    // Log delivery to PocketBase for audit tracking.
+    // Record delivery for audit tracking (non-fatal).
     try {
-      await pb.collection("webhook_deliveries").create({
-        user: userId,
-        opportunity: opportunityId,
-        webhook_url: webhookUrl,
-        event_type: eventType,
-        delivered_at: new Date().toISOString(),
-        status: dispatchResult.ok ? "sent" : "failed",
-        provider: "webhook",
-        external_id: webhookUrl,
-        response_status: dispatchResult.status ?? null,
-        error_message: dispatchResult.error ?? null,
-      });
-    } catch (err) {
-      // Non-fatal: log but don't block the response.
-      error("[webhook] Failed to record delivery", {
+      await query(
+        `INSERT INTO webhook_deliveries
+           (user_id, opportunity_id, webhook_url, event_type, payload,
+            provider, external_id, response_status, error_message,
+            status, delivered_at, created_at)
+         VALUES ($1, $2, $3, $4, $5::jsonb, 'webhook', $6, $7, $8, $9, NOW(), NOW())`,
+        [
+          userId,
+          opportunityId,
+          webhookUrl,
+          eventType,
+          JSON.stringify(payload),
+          webhookUrl,
+          dispatchResult.status ?? null,
+          dispatchResult.error ?? null,
+          dispatchResult.ok ? "sent" : "failed",
+        ],
+      );
+    } catch (err: unknown) {
+      error("webhook_delivery_record_failed", {
+        userId,
+        opportunityId,
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -161,7 +189,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       result: dispatchResult,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Dispatch failed.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    error("webhook_dispatch_failed", {
+      userId,
+      opportunityId,
+      error: err instanceof Error ? err.stack ?? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: "Unable to dispatch the webhook." },
+      { status: 500 },
+    );
   }
 }

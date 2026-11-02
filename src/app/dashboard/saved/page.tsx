@@ -1,11 +1,8 @@
 import * as React from "react";
-import { headers } from "next/headers";
 import { Button } from "@/components/ui/button";
 import { ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getAdminPb = async () => null as any;
-import { getCurrentUser } from "@/lib/auth";
+import { backendJson } from "@/lib/backend";
 
 interface SavedOpportunity {
   id: string;
@@ -18,39 +15,65 @@ interface SavedOpportunity {
   saved_at: string;
 }
 
-async function fetchSavedOpportunities(): Promise<SavedOpportunity[]> {
-  const headersList = await headers();
-  const cookieHeader = headersList.get("cookie");
-  const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
-  if (!user) return [];
+const MAX_SAVED = 50;
 
-  const pb = await getAdminPb();
-  if (!pb) return [];
-
+function formatCurrency(value: number | null, currency: string | null): string {
+  if (value == null) return "—";
+  const code = (currency || "GBP").toUpperCase();
   try {
-    const records = await pb.collection("saved_opportunities").getList(1, 50, {
-      filter: `user = "${user.id}"`,
-      expand: "opportunity",
-      sort: "-saved_at",
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return records.items.map((item: any) => {
-      const opp = (item.expand?.opportunity as Record<string, unknown> | null) ?? null;
-      return {
-        id: item.id,
-        title: (opp?.title as string) ?? "Untitled opportunity",
-        buyer: (opp?.buyer as string) ?? null,
-        sector: (opp?.sector as string) ?? "",
-        region: (opp?.region as string) ?? "",
-        estimated_value: (opp?.estimated_value as number | null) ?? null,
-        currency: (opp?.currency as string | null) ?? null,
-        saved_at: item.saved_at,
-      };
-    });
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 0,
+    }).format(value);
   } catch {
-    return [];
+    return `${Math.round(value).toLocaleString("en-GB")} ${code}`;
   }
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+interface SavedOpportunitiesResponse {
+  items?: Array<{
+    id: string;
+    savedAt: string;
+    opportunity?: {
+      title?: string | null;
+      buyer?: string | null;
+      sector?: string | null;
+      region?: string | null;
+      estimated_value?: number | null;
+      currency?: string | null;
+    };
+  }>;
+}
+
+async function fetchSavedOpportunities(): Promise<SavedOpportunity[]> {
+  const result = await backendJson<SavedOpportunitiesResponse>(
+    "/api/saved-opportunities",
+  );
+
+  return (result?.items ?? []).slice(0, MAX_SAVED).map((item) => ({
+    id: item.id,
+    title: item.opportunity?.title ?? "Untitled opportunity",
+    buyer: item.opportunity?.buyer ?? null,
+    sector: item.opportunity?.sector ?? "",
+    region: item.opportunity?.region ?? "",
+    estimated_value:
+      item.opportunity?.estimated_value != null
+        ? Number(item.opportunity.estimated_value)
+        : null,
+    currency: item.opportunity?.currency ?? null,
+    saved_at: new Date(item.savedAt).toISOString(),
+  }));
 }
 
 export default async function SavedPage() {
@@ -64,6 +87,7 @@ export default async function SavedPage() {
           <p className="text-[10px] font-inter font-mono tracking-wider text-slate-500 uppercase">Shortlisted contracts ready for review and pursuit.</p>
         </div>
         <div className="flex gap-1">
+          {/* CSV export is gated server-side to Pro accounts. */}
           <Button variant="ghost" className="px-4 py-2 text-[10px] font-inter font-semibold text-D4AF37 border border-D4AF37/30 hover:bg-D4AF37/5 transition-all duration-200 ease-out rounded-sm">
             Export CSV
           </Button>
@@ -100,8 +124,8 @@ export default async function SavedPage() {
                     <td className="px-4 py-4 text-sm font-inter font-mono text-slate-400 tabular-nums">{opp.buyer ?? "—"}</td>
                     <td className="px-4 py-4 text-sm font-inter text-slate-400">{opp.sector}</td>
                     <td className="px-4 py-4 text-sm font-inter font-mono text-slate-400 tabular-nums">{opp.region}</td>
-                    <td className="px-4 py-4 text-right"><span className="text-sm font-inter font-bold text-[#E5E5EA] font-mono tabular-nums">£{opp.estimated_value?.toLocaleString() ?? "—"}</span></td>
-                    <td className="px-4 py-4 text-sm font-inter font-mono text-slate-400 tabular-nums">{opp.saved_at}</td>
+                    <td className="px-4 py-4 text-right"><span className="text-sm font-inter font-bold text-[#E5E5EA] font-mono tabular-nums">{formatCurrency(opp.estimated_value, opp.currency)}</span></td>
+                    <td className="px-4 py-4 text-sm font-inter font-mono text-slate-400 tabular-nums">{formatDate(opp.saved_at)}</td>
                     <td className="px-4 py-4 text-right">
                       <ChevronRight className="h-4 w-4 text-slate-600 transition-colors" />
                     </td>

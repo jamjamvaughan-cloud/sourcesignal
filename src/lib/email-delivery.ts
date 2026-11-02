@@ -1,20 +1,18 @@
 /**
  * Email delivery abstraction (Phase G).
  *
- * Provides a pluggable email delivery provider interface and persistent
- * delivery queue/status abstraction backed by PocketBase's
- * `alert_deliveries` collection. Deliveries are persisted across restarts
- * instead of holding them in volatile process memory.
+ * Provides a pluggable email delivery provider interface and a persistent
+ * delivery log backed by the PostgreSQL `alert_deliveries` table. Deliveries
+ * survive restarts instead of living in volatile process memory.
  *
- * When no email provider credentials are configured, deliveries are persisted
- * with status "queued" so the feature can be completed without rewriting
- * the system.
+ * When no email provider is configured, deliveries are persisted with status
+ * "queued" so the feature can be completed without rewriting the system.
  *
  * Never claims an alert was delivered if it was only queued.
  */
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getAdminPb = async () => null as any;
+import { query } from "@/lib/db";
+import { error } from "@/lib/logger";
 
 export interface EmailProvider {
   readonly name: string;
@@ -26,7 +24,7 @@ export interface EmailProvider {
   }): Promise<{ accepted: boolean; messageId?: string; error?: string }>;
 }
 
-interface QueuedDelivery {
+export interface QueuedDelivery {
   id: string;
   alertId: string;
   opportunityId: string;
@@ -40,80 +38,98 @@ interface QueuedDelivery {
 }
 
 /**
- * Persists a delivery record to PocketBase's alert_deliveries collection.
+ * Persists a delivery record to `alert_deliveries`.
+ *
+ * Failures are logged but never thrown: alert processing should continue even
+ * when the audit log cannot be written.
  */
 async function persistDelivery(delivery: QueuedDelivery): Promise<void> {
-  const pb = await getAdminPb();
-  if (!pb) {
-    return;
-  }
   try {
-    await pb.collection("alert_deliveries").create({
-      id: delivery.id,
-      alert: delivery.alertId,
-      opportunity: delivery.opportunityId,
-      delivered_at: delivery.createdAt,
-      status: delivery.status,
-      provider: delivery.provider,
-      external_id: delivery.messageId ?? null,
-      error_message: delivery.error ?? null,
+    await query(
+      `INSERT INTO alert_deliveries
+         (alert_id, opportunity_id, status, provider, external_id,
+          error_message, delivered_at, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [
+        delivery.alertId,
+        delivery.opportunityId,
+        delivery.status,
+        delivery.provider,
+        delivery.messageId ?? null,
+        delivery.error ?? null,
+        delivery.status === "sent"
+          ? delivery.sentAt ?? delivery.createdAt
+          : null,
+      ],
+    );
+  } catch (err: unknown) {
+    error("alert_delivery_persist_failed", {
+      alertId: delivery.alertId,
+      opportunityId: delivery.opportunityId,
+      error: err instanceof Error ? err.stack ?? err.message : String(err),
     });
-  } catch {
-    // Non-fatal: persistence failure should not block alert processing.
   }
 }
 
-/**
- * Returns all queued deliveries from PocketBase (for testing and administration).
- */
+/** Returns recent deliveries (for testing and administration). */
 export async function getDeliveryQueue(): Promise<QueuedDelivery[]> {
-  const pb = await getAdminPb();
-  if (!pb) {
-    return [];
-  }
   try {
-    const records = await pb.collection("alert_deliveries").getFullList();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return records.map((d: any) => ({
-      id: d.id,
-      alertId: d.alert as string,
-      opportunityId: d.opportunity as string,
-      to: (d as Record<string, unknown>).to as string,
-      status: d.status as "queued" | "sent" | "failed",
-      provider: d.provider as string,
-      messageId: d.external_id as string | undefined,
-      error: d.error_message as string | undefined,
-      createdAt: d.delivered_at as string,
-      sentAt: (d as Record<string, unknown>).sentAt as string | undefined,
+    const result = await query(
+      `SELECT d.id,
+              d.alert_id,
+              d.opportunity_id,
+              u.email AS recipient,
+              d.status,
+              d.provider,
+              d.external_id,
+              d.error_message,
+              d.delivered_at,
+              d.created_at
+         FROM alert_deliveries d
+         LEFT JOIN alerts a ON a.id = d.alert_id
+         LEFT JOIN users u ON u.id = a.user_id
+        ORDER BY d.created_at DESC
+        LIMIT 500`,
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id as string,
+      alertId: row.alert_id as string,
+      opportunityId: row.opportunity_id as string,
+      to: (row.recipient as string | null) ?? "",
+      status: row.status as QueuedDelivery["status"],
+      provider: (row.provider as string | null) ?? "none",
+      ...(row.external_id ? { messageId: row.external_id as string } : {}),
+      ...(row.error_message ? { error: row.error_message as string } : {}),
+      createdAt: new Date(row.created_at as string).toISOString(),
+      ...(row.delivered_at
+        ? { sentAt: new Date(row.delivered_at as string).toISOString() }
+        : {}),
     }));
-  } catch {
+  } catch (err: unknown) {
+    error("alert_delivery_queue_failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
     return [];
   }
 }
 
 /**
- * Resets the delivery queue (clears all alert_deliveries records).
- * For testing only.
+ * Resets the delivery log. For testing only.
  */
 export async function resetDeliveryQueue(): Promise<void> {
-  const pb = await getAdminPb();
-  if (!pb) {
-    return;
-  }
   try {
-    const records = await pb.collection("alert_deliveries").getFullList();
-    for (const record of records) {
-      await pb.collection("alert_deliveries").delete(record.id);
-    }
-  } catch {
-    // Non-fatal.
+    await query(`DELETE FROM alert_deliveries`);
+  } catch (err: unknown) {
+    error("alert_delivery_reset_failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
 /**
  * Abstract email delivery service. Tries the configured provider; if none is
  * configured, records the delivery as "queued" with status honesty.
- * Persists all deliveries to PocketBase.
  */
 export class EmailDeliveryService {
   private provider: EmailProvider | null;
@@ -162,7 +178,7 @@ export class EmailDeliveryService {
           error: result.error,
         };
       } catch (err: unknown) {
-        const error = err instanceof Error ? err.message : String(err);
+        const message = err instanceof Error ? err.message : String(err);
         const entry: QueuedDelivery = {
           id,
           alertId,
@@ -170,11 +186,11 @@ export class EmailDeliveryService {
           to,
           status: "failed",
           provider: this.provider.name,
-          error,
+          error: message,
           createdAt,
         };
         await persistDelivery(entry);
-        return { status: "queued", error };
+        return { status: "queued", error: message };
       }
     }
 

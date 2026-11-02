@@ -4,7 +4,7 @@ Commercial intelligence and procurement SaaS — discover, evaluate and monitor 
 
 ## Status
 
-Production-ready. Full ingestion pipeline, entitlement system, PocketBase backend, Stripe billing, AI extraction, and SHA-256 provenance are implemented and tested.
+Full ingestion pipeline, entitlement system, PostgreSQL backend, Stripe billing, AI extraction, and SHA-256 provenance are implemented and tested. Deployed as a Vercel frontend + FastHost VPS backend.
 
 ## Technology stack
 
@@ -14,8 +14,8 @@ Production-ready. Full ingestion pipeline, entitlement system, PocketBase backen
 - **Tailwind CSS v4** — design tokens via CSS variables
 - **shadcn/ui** — accessible UI primitives (Base UI / Nova preset, Lucide icons)
 - **Lucide** — icons
-- **PocketBase** — backend, database and authentication
-- **Coolify** — planned deployment platform
+- **PostgreSQL 16** — database (Redis optional for cache/sessions)
+- **Vercel + FastHost VPS** — split deployment: Vercel serves the frontend, the VPS runs the API, data and ingestion
 - **ESLint / Vitest** — linting and testing
 
 ## Installation
@@ -101,15 +101,22 @@ To reset local data, drop and recreate the database:
 npx tsx scripts/reset-db.ts
 ```
 
-## Docker-based deployment preparation (Coolify)
+## Production deployment (Vercel + FastHost VPS)
 
-The project is container-ready for Coolify:
+The app is deployed as two halves of the same codebase:
 
-- `Dockerfile` — multi-stage Node.js build, standalone Next.js output, non-root user, port `3000`.
-- `.dockerignore` — excludes `.env*`, `node_modules`, `.next`, secrets.
-- `next.config.ts` — `output: "standalone"`.
+- **Vercel** (`app.sourcesignal.site`) — Next.js frontend. `/api/*` is rewritten to the VPS; no database or secret credentials live on Vercel.
+- **FastHost VPS** (`api.sourcesignal.site`) — Next.js API routes, PostgreSQL, PgBouncer, Redis, Caddy TLS, and the ingestion worker.
 
-See `docs/coolify-deployment.md` for the full deployment approach. No secrets are baked into the image; supply them via Coolify environment variables.
+Supporting files:
+
+- `Dockerfile` — multi-stage standalone Next.js build for the VPS, non-root user, port `3000`.
+- `docker-compose.prod.yml` — hardened stack; only Caddy publishes host ports.
+- `Caddyfile` — automatic TLS for `api.sourcesignal.site`.
+- `.env.production.example` — VPS environment template.
+- `next.config.ts` — rewrites `/api/*` to `BACKEND_URL` when running on Vercel.
+
+See `docs/deployment-vercel-vps.md` for DNS, secrets, Stripe webhooks, backups and the full runbook.
 
 ## Build and lint commands
 
@@ -150,9 +157,10 @@ src/
     empty-state.tsx            # Elegant empty state UI
     cookie-banner.tsx          # Cookie consent banner
   lib/
-    env.ts          # Environment validation + PocketBase URL
-    pb.ts           # Typed PocketBase client boundary
-    pb-server.ts    # Server-side PocketBase admin client
+    env.ts          # Server environment validation
+    db.ts           # PostgreSQL pool, queries and transactions
+    redis.ts        # Redis with PostgreSQL / memory fallback
+    backend.ts      # Server-to-server API client for the Vercel frontend
     auth.ts         # Authentication helpers
     config/         # Central configuration
       index.ts      # Central config barrel
@@ -215,11 +223,11 @@ worker/
 ### Architecture
 
 - **Web app**: Next.js 16 App Router, React 19, TypeScript strict
-- **Backend**: PocketBase (auth, database, file storage)
+- **Backend**: PostgreSQL 16 (auth, records) + Redis (cache/sessions, optional)
 - **Ingestion worker**: Separate Node.js project polling 18 source adapters every 15 minutes
 - **Billing**: Stripe (checkout + webhooks with idempotency)
 - **AI extraction**: NVIDIA API for structured procurement data extraction
-- **Deployment**: Docker multi-stage build, standalone output, Coolify-ready
+- **Deployment**: Vercel frontend + FastHost VPS backend (Docker, Caddy, standalone output)
 
 ## Security
 
@@ -238,7 +246,7 @@ worker/
 
 - TypeScript type check: clean (web + worker)
 - ESLint: clean (0 errors)
-- Production build: clean (28 routes)
+- Production build: clean (45 routes)
 - Tests: 44 passed across 4 test files
 - All dashboard routes: redirect to signin when unauthenticated
 - All API routes: functional with proper authentication
@@ -247,7 +255,7 @@ worker/
 
 ## Commands to start
 
-1. PocketBase: `./pocketbase serve --http=127.0.0.1:8090` then `./pocketbase migrate`
+1. PostgreSQL + Redis: follow [Local PostgreSQL setup](#local-postgresql-setup)
 2. Web app: `npm run dev` (opens http://localhost:3000)
 3. Worker: `cd worker && npm run ingest -- --once` (single run) or `npm run dev` (15-min polling)
 4. Worker health: `cd worker && npm run health`

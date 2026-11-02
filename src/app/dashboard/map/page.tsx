@@ -1,7 +1,3 @@
-import { headers } from "next/headers";
-import { getCurrentUser } from "@/lib/auth";
-import { getUserPlanIdFromPB } from "@/lib/auth";
-import { type PlanId } from "@/lib/entitlements";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -9,33 +5,12 @@ import {
   canAccessFullMap,
   getUpgradeMessage,
 } from "@/lib/tier-gating";
-
-async function getUserPlanId(): Promise<PlanId> {
-  const headersList = await headers();
-  const cookieHeader = headersList.get("cookie");
-  const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
-  if (!user) return "free";
-  return getUserPlanIdFromPB(user.id);
-}
-
-async function getUserCountry(): Promise<string | null> {
-  const headersList = await headers();
-  const cookieHeader = headersList.get("cookie");
-  const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
-  if (!user) return null;
-  try {
-    const userRecord = await (async () => null)();
-    if (!userRecord) return null;
-  } catch {
-    return null;
-  }
-  return null;
-}
+import { getSessionContext } from "@/lib/backend";
 
 export default async function MapPage() {
-  const planId = await getUserPlanId();
+  const { planId, user } = await getSessionContext();
   const canFullMapAccess = canAccessFullMap(planId);
-  const userCountry = await getUserCountry();
+  const userCountry = user?.country ?? null;
 
   return (
     <div className="flex flex-col h-full bg-[#09090b] text-[#E5E5EA] overflow-x-hidden">

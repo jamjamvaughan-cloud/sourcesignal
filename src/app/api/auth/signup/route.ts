@@ -1,164 +1,184 @@
+/**
+ * POST /api/auth/signup
+ *
+ * Creates a user, their default organisation and owner membership in a single
+ * PostgreSQL transaction, then issues a signed session cookie.
+ *
+ * The handler is deliberately defensive:
+ *   - JSON parsing failures return 400 (not an opaque 500).
+ *   - The database client is acquired inside the try/finally block.
+ *   - Unique-constraint races return 409 instead of 500.
+ *   - Every failure is logged with stack context for server-side diagnosis.
+ */
+
 import { NextResponse } from "next/server";
-import { getClient } from "@/lib/db";
+import { withTransaction } from "@/lib/db";
 import { setSession } from "@/lib/redis";
-import {
-  SESSION_TTL,
-  buildSessionCookie,
-} from "@/lib/auth";
+import { SESSION_TTL, buildSessionCookie } from "@/lib/auth";
+import { error, info } from "@/lib/logger";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
 
+const SUPPORTED_COUNTRIES = new Set(["UK", "US", "CA", "IE", "AU", "EU"]);
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+interface SignupBody {
+  email?: unknown;
+  password?: unknown;
+  passwordConfirm?: unknown;
+  organisationName?: unknown;
+  organizationName?: unknown;
+  acceptTerms?: unknown;
+  country?: unknown;
+}
+
+/** Returns a validated/normalised country code, defaulting to UK. */
+function normaliseCountry(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return SUPPORTED_COUNTRIES.has(raw) ? raw : "UK";
+}
+
+/** Converts a PostgreSQL unique violation into a friendly message. */
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: string }).code === "23505"
+  );
+}
+
 export async function POST(request: Request) {
-  const client = await getClient();
+  let body: SignupBody;
+  try {
+    body = (await request.json()) as SignupBody;
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON body. Expected an object with email and password." },
+      { status: 400 },
+    );
+  }
+
+  const email =
+    typeof body.email === "string" ? body.email.toLowerCase().trim() : "";
+  const password = typeof body.password === "string" ? body.password : "";
+  const passwordConfirm =
+    typeof body.passwordConfirm === "string" ? body.passwordConfirm : undefined;
+  const orgNameRaw =
+    typeof body.organisationName === "string"
+      ? body.organisationName
+      : typeof body.organizationName === "string"
+        ? body.organizationName
+        : undefined;
+  const country = normaliseCountry(body.country);
+
+  // 1. Validate required payload parameters.
+  if (!email || !password) {
+    return NextResponse.json(
+      { error: "Email and password are required." },
+      { status: 400 },
+    );
+  }
+  if (!EMAIL_PATTERN.test(email)) {
+    return NextResponse.json(
+      { error: "Please enter a valid email address." },
+      { status: 400 },
+    );
+  }
+  if (password.length < 8) {
+    return NextResponse.json(
+      { error: "Password must be at least 8 characters." },
+      { status: 400 },
+    );
+  }
+  if (passwordConfirm !== undefined && passwordConfirm !== password) {
+    return NextResponse.json(
+      { error: "Passwords do not match." },
+      { status: 400 },
+    );
+  }
+  // acceptTerms is optional — defaults to true (relaxed for API clients).
+  if (body.acceptTerms === false) {
+    return NextResponse.json(
+      { error: "You must accept the Terms of Service to create an account." },
+      { status: 400 },
+    );
+  }
 
   try {
-    const body = await request.json();
-    const {
-      email,
-      password,
-      organisationName,
-      organizationName,
-      acceptTerms,
-      country,
-    } = body;
-
-    // 1. Validate required payload parameters
-    if (!email || !password) {
-      return NextResponse.json(
-        { error: "Email and password are required" },
-        { status: 400 },
-      );
-    }
-
-    // Accept either spelling: organisationName or organizationName
-    const orgNameRaw =
-      organisationName ?? organizationName ?? undefined;
-
-    // acceptTerms is optional — defaults to true (relaxed for dev testing)
-    const termsAccepted = acceptTerms ?? true;
-
-    if (!termsAccepted) {
-      return NextResponse.json(
-        { error: "You must accept the Terms of Service to create an account" },
-        { status: 400 },
-      );
-    }
-
-    // 2. Begin database transaction
-    await client.query("BEGIN");
-
-    // 3. Check if user already exists
-    const existingUser = await client.query(
-      "SELECT id FROM users WHERE email = $1",
-      [email.toLowerCase().trim()],
-    );
-    if (existingUser.rowCount && existingUser.rowCount > 0) {
-      await client.query("ROLLBACK");
-      return NextResponse.json(
-        { error: "An account with this email already exists" },
-        { status: 400 },
-      );
-    }
-
-    // 4. Hash password securely
+    // Hash outside the transaction so the database client is not held during
+    // the (CPU-bound) bcrypt work.
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // 5. Insert new user with default 'free' subscription tier
-    let newUser: { id: string; email: string; subscription_tier: string };
-    try {
+    const created = await withTransaction(async (client) => {
+      // Check for an existing account first for a friendly error. The unique
+      // index still protects against concurrent signups.
+      const existingUser = await client.query(
+        "SELECT id FROM users WHERE email = $1",
+        [email],
+      );
+      if ((existingUser.rowCount ?? 0) > 0) {
+        return { kind: "exists" as const };
+      }
+
       const userResult = await client.query(
         `INSERT INTO users (email, password_hash, subscription_tier, created_at, updated_at)
          VALUES ($1, $2, 'free', NOW(), NOW())
          RETURNING id, email, subscription_tier`,
-        [email.toLowerCase().trim(), passwordHash],
+        [email, passwordHash],
       );
-      newUser = userResult.rows[0];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      await client.query("ROLLBACK");
-      console.error("User insert error:", err);
-      return NextResponse.json(
-        {
-          error: err?.message || "Failed to create user",
-          detail: err?.detail || undefined,
-          code: err?.code || undefined,
-        },
-        { status: 500 },
-      );
-    }
+      const newUser = userResult.rows[0] as {
+        id: string;
+        email: string;
+        subscription_tier: string;
+      };
 
-    // 6. Create default organisation and membership link
-    const orgName =
-      orgNameRaw?.trim() || `${email.split("@")[0]}'s Workspace`;
-    const slugBase =
-      orgName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "") || "workspace";
-    const orgSlug = `${slugBase}-${newUser.id.slice(0, 8)}`;
+      const orgName =
+        orgNameRaw?.trim() || `${email.split("@")[0]}'s Workspace`;
+      const slugBase =
+        orgName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "") || "workspace";
+      const orgSlug = `${slugBase}-${newUser.id.slice(0, 8)}`;
 
-    let newOrg: { id: string };
-    try {
       const orgResult = await client.query(
         `INSERT INTO organisations (name, slug, plan, country, owner_id, created_by, created_at, updated_at)
          VALUES ($1, $2, 'free', $3, $4, $4, NOW(), NOW())
-         RETURNING id`,
-        [orgName, orgSlug, country ?? "UK", newUser.id],
+         RETURNING id, name, country`,
+        [orgName, orgSlug, country, newUser.id],
       );
-      newOrg = orgResult.rows[0];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      await client.query("ROLLBACK");
-      console.error("Organisation insert error:", err);
-      return NextResponse.json(
-        {
-          error: err?.message || "Failed to create organisation",
-          detail: err?.detail || undefined,
-          code: err?.code || undefined,
-        },
-        { status: 500 },
-      );
-    }
+      const newOrg = orgResult.rows[0] as {
+        id: string;
+        name: string;
+        country: string;
+      };
 
-    // Link user to organisation in memberships table
-    try {
       await client.query(
         `INSERT INTO memberships (user_id, organisation_id, role, created_at, updated_at)
          VALUES ($1, $2, 'owner', NOW(), NOW())`,
         [newUser.id, newOrg.id],
       );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      await client.query("ROLLBACK");
-      console.error("Membership insert error:", err);
+
+      // Keep the user's primary organisation pointer in sync.
+      await client.query(
+        `UPDATE users SET organisation_id = $1, updated_at = NOW() WHERE id = $2`,
+        [newOrg.id, newUser.id],
+      );
+
+      return { kind: "created" as const, user: newUser, organisation: newOrg };
+    });
+
+    if (created.kind === "exists") {
       return NextResponse.json(
-        {
-          error: err?.message || "Failed to create membership",
-          detail: err?.detail || undefined,
-          code: err?.code || undefined,
-        },
-        { status: 500 },
+        { error: "An account with this email already exists." },
+        { status: 409 },
       );
     }
 
-    // Commit transaction
-    try {
-      await client.query("COMMIT");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      await client.query("ROLLBACK");
-      console.error("Commit error:", err);
-      return NextResponse.json(
-        {
-          error: err?.message || "Failed to commit transaction",
-          detail: err?.detail || undefined,
-          code: err?.code || undefined,
-        },
-        { status: 500 },
-      );
-    }
+    const { user: newUser, organisation: newOrg } = created;
 
     // Issue a signed session token and persist it so /api/auth/me resolves
     // this user immediately after signup.
@@ -181,6 +201,7 @@ export async function POST(request: Request) {
           email: newUser.email,
           subscription_tier: newUser.subscription_tier,
           organisation_id: newOrg.id,
+          country: newOrg.country,
         },
       },
       { status: 201 },
@@ -189,20 +210,34 @@ export async function POST(request: Request) {
       "Set-Cookie",
       buildSessionCookie(token, SESSION_TTL),
     );
+
+    info("auth_signup", {
+      message: "Account created",
+      userId: newUser.id,
+      organisationId: newOrg.id,
+      country,
+    });
+
     return response;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
-    await client.query("ROLLBACK");
-    console.error("Signup Execution Error:", error);
+  } catch (err: unknown) {
+    if (isUniqueViolation(err)) {
+      return NextResponse.json(
+        { error: "An account with this email already exists." },
+        { status: 409 },
+      );
+    }
+
+    error("auth_signup_failed", {
+      error: err instanceof Error ? err.stack ?? err.message : String(err),
+      email,
+    });
+
     return NextResponse.json(
       {
-        error: error?.message || "Internal Server Error",
-        detail: error?.detail || undefined,
-        code: error?.code || undefined,
+        error:
+          "We could not create your account right now. Please try again in a moment.",
       },
       { status: 500 },
     );
-  } finally {
-    client.release();
   }
 }

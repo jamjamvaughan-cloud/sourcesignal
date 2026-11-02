@@ -1,5 +1,5 @@
 /**
- * Next.js middleware for SourceSignal.
+ * Next.js proxy for SourceSignal.
  *
  * Combines route protection and secure response headers.
  *
@@ -22,7 +22,7 @@ const PUBLIC_PATH_PREFIXES = [
 
 const DASHBOARD_PREFIX = "/dashboard";
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths and static assets.

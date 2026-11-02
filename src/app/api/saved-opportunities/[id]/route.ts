@@ -2,12 +2,15 @@
  * Unsave a saved opportunity.
  *
  * DELETE /api/saved-opportunities/[id]
+ *
+ * The `[id]` may be either the saved_opportunities row id or the opportunity
+ * id, so the dashboard can unsave with whichever identifier it already has.
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { query } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getAdminPb = async () => null as any;
+import { error } from "@/lib/logger";
 
 async function requireUser(
   request: NextRequest,
@@ -29,23 +32,29 @@ export async function DELETE(
   if (userOrError instanceof NextResponse) return userOrError;
   const { id: userId } = userOrError;
 
-  const pb = await getAdminPb();
-  if (!pb) {
-    return NextResponse.json({ error: "Service unavailable." }, { status: 503 });
-  }
-
   try {
-    // Verify ownership before deleting.
-    const record = await pb.collection("saved_opportunities").getOne(savedId);
-    if (record.user !== userId) {
+    const result = await query(
+      `DELETE FROM saved_opportunities
+        WHERE user_id = $1
+          AND (id::text = $2 OR opportunity_id::text = $2)
+        RETURNING id`,
+      [userId, savedId],
+    );
+
+    if ((result.rowCount ?? 0) === 0) {
       return NextResponse.json({ error: "Not found." }, { status: 404 });
     }
 
-    await pb.collection("saved_opportunities").delete(savedId);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : "Failed to unsave opportunity.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    error("saved_opportunity_delete_failed", {
+      userId,
+      savedId,
+      error: err instanceof Error ? err.stack ?? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: "Unable to remove this signal." },
+      { status: 500 },
+    );
   }
 }

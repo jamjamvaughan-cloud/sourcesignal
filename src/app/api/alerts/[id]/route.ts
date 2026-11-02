@@ -3,26 +3,32 @@
  *
  * PATCH  /api/alerts/[id]
  * DELETE /api/alerts/[id]
+ *
+ * Both operations are owner-scoped. Criteria are stored in
+ * `alerts.query_filters` (JSONB); the active flag lives in `is_active`.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser, getUserPlanIdFromPB } from "@/lib/auth";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getAdminPb = async () => null as any;
+import { query } from "@/lib/db";
+import { getCurrentUser, getUserPlanId } from "@/lib/auth";
 import { entitlementsFor } from "@/lib/entitlements";
-import { isValidSectorId, isValidRegion } from "@/lib/config";
-import type { PlanId } from "@/lib/entitlements";
+import {
+  isInvalidUuidError,
+  parseAlertFilters,
+  validateAlertFilters,
+} from "@/lib/alert-filters";
+import { error } from "@/lib/logger";
 
 async function requireUser(
   request: NextRequest,
-): Promise<{ userId: string; planId: PlanId } | NextResponse> {
+): Promise<{ userId: string } | NextResponse> {
   const cookieHeader = request.headers.get("cookie");
   const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
   if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
-  const planId = await getUserPlanIdFromPB(user.id);
+  const planId = await getUserPlanId(user.id);
   const entitlements = entitlementsFor(planId);
 
   if (!entitlements.alertsEnabled) {
@@ -32,7 +38,7 @@ async function requireUser(
     );
   }
 
-  return { userId: user.id, planId };
+  return { userId: user.id };
 }
 
 export async function PATCH(
@@ -44,52 +50,101 @@ export async function PATCH(
   if (result instanceof NextResponse) return result;
   const { userId } = result;
 
-  const body = await request.json().catch(() => ({}));
-  const { name, sectors, regions, keywords, enabled } = body;
+  const body = (await request.json().catch(() => ({}))) as Record<
+    string,
+    unknown
+  >;
 
-  if (sectors && Array.isArray(sectors)) {
-    for (const s of sectors) {
-      if (!isValidSectorId(s)) {
-        return NextResponse.json({ error: `Invalid sector: ${s}` }, { status: 400 });
-      }
-    }
-  }
-  if (regions && Array.isArray(regions)) {
-    for (const r of regions) {
-      if (!isValidRegion(r)) {
-        return NextResponse.json({ error: `Invalid region: ${r}` }, { status: 400 });
-      }
-    }
+  if (
+    body.name !== undefined &&
+    (typeof body.name !== "string" || !body.name.trim())
+  ) {
+    return NextResponse.json(
+      { error: "Alert name cannot be empty." },
+      { status: 400 },
+    );
   }
 
-  const pb = await getAdminPb();
-  if (!pb) {
-    return NextResponse.json({ error: "Service unavailable." }, { status: 503 });
+  const validation = validateAlertFilters({
+    sectors: body.sectors,
+    regions: body.regions,
+    keywords: body.keywords,
+  });
+  if (!validation.ok) {
+    return NextResponse.json({ error: validation.error }, { status: 400 });
   }
 
   try {
-    // Verify ownership.
-    const record = await pb.collection("alerts").getOne(alertId);
-    if (record.user !== userId) {
+    const existing = await query(
+      `SELECT query_filters FROM alerts WHERE id = $1 AND user_id = $2`,
+      [alertId, userId],
+    );
+    if ((existing.rowCount ?? 0) === 0) {
       return NextResponse.json({ error: "Not found." }, { status: 404 });
     }
 
-    const updated = await pb.collection("alerts").update(alertId, {
-      ...(name !== undefined && { name }),
-      ...(sectors !== undefined && { sectors }),
-      ...(regions !== undefined && { regions }),
-      ...(keywords !== undefined && { keywords }),
-      ...(enabled !== undefined && { enabled }),
-    });
+    const current = parseAlertFilters(existing.rows[0].query_filters);
+    const merged = { ...current, ...validation.filters };
 
+    const updates: string[] = [];
+    const values: unknown[] = [];
+
+    if (body.name !== undefined) {
+      values.push((body.name as string).trim());
+      updates.push(`name = $${values.length}`);
+    }
+    if (Object.keys(validation.filters).length > 0) {
+      values.push(JSON.stringify(merged));
+      updates.push(`query_filters = $${values.length}::jsonb`);
+    }
+    if (body.enabled !== undefined) {
+      values.push(body.enabled !== false);
+      updates.push(`is_active = $${values.length}`);
+    }
+
+    if (updates.length === 0) {
+      return NextResponse.json(
+        { error: "No fields to update." },
+        { status: 400 },
+      );
+    }
+
+    updates.push("updated_at = NOW()");
+    values.push(alertId, userId);
+    const idParam = values.length - 1;
+    const userParam = values.length;
+
+    const updated = await query(
+      `UPDATE alerts
+          SET ${updates.join(", ")}
+        WHERE id = $${idParam} AND user_id = $${userParam}
+        RETURNING id, name, is_active`,
+      values,
+    );
+
+    if ((updated.rowCount ?? 0) === 0) {
+      return NextResponse.json({ error: "Not found." }, { status: 404 });
+    }
+
+    const row = updated.rows[0];
     return NextResponse.json({
-      id: updated.id,
-      name: updated.name,
-      enabled: updated.enabled,
+      id: row.id,
+      name: row.name,
+      enabled: row.is_active,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Failed to update alert.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (isInvalidUuidError(err)) {
+      return NextResponse.json({ error: "Not found." }, { status: 404 });
+    }
+    error("alert_update_failed", {
+      userId,
+      alertId,
+      error: err instanceof Error ? err.stack ?? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: "Unable to update the alert." },
+      { status: 500 },
+    );
   }
 }
 
@@ -102,21 +157,29 @@ export async function DELETE(
   if (result instanceof NextResponse) return result;
   const { userId } = result;
 
-  const pb = await getAdminPb();
-  if (!pb) {
-    return NextResponse.json({ error: "Service unavailable." }, { status: 503 });
-  }
-
   try {
-    const record = await pb.collection("alerts").getOne(alertId);
-    if (record.user !== userId) {
+    const deleted = await query(
+      `DELETE FROM alerts WHERE id = $1 AND user_id = $2 RETURNING id`,
+      [alertId, userId],
+    );
+
+    if ((deleted.rowCount ?? 0) === 0) {
       return NextResponse.json({ error: "Not found." }, { status: 404 });
     }
 
-    await pb.collection("alerts").delete(alertId);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Failed to delete alert.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (isInvalidUuidError(err)) {
+      return NextResponse.json({ error: "Not found." }, { status: 404 });
+    }
+    error("alert_delete_failed", {
+      userId,
+      alertId,
+      error: err instanceof Error ? err.stack ?? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: "Unable to delete the alert." },
+      { status: 500 },
+    );
   }
 }

@@ -10,47 +10,20 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getAdminPb = async () => null as any;
+import { query } from "@/lib/db";
+import { getCurrentUser, getUserPlanId } from "@/lib/auth";
 import { entitlementsFor, permittedOpportunityFields } from "@/lib/entitlements";
 import { isValidSectorId, isValidRegion } from "@/lib/config";
-import type { PlanId } from "@/lib/entitlements";
+import { error } from "@/lib/logger";
 
 const MAX_EXPORT_ROWS = 1000;
 
-/**
- * Resolve the caller's TRUE plan from their organisation membership in
- * PocketBase. Never hardcode "free" — that broke Pro exports.
- */
-async function getUserPlanId(userId: string): Promise<PlanId> {
-  const pb = await getAdminPb();
-  if (!pb) {
-    return "free";
-  }
-  try {
-    const memberships = await pb.collection("memberships").getList(1, 1, {
-      filter: `user = "${userId}"`,
-    });
-    if (memberships.items.length === 0) {
-      return "free";
-    }
-    const membership = memberships.items[0];
-    const org = await pb.collection("organisations").getOne(
-      membership.organisation,
-    );
-    return ((org as Record<string, unknown>).plan as PlanId) ?? "free";
-  } catch {
-    return "free";
-  }
-}
-
 async function requirePro(
   request: NextRequest,
-): Promise<{
-  userId: string;
-  entitlements: ReturnType<typeof entitlementsFor>;
-} | NextResponse> {
+): Promise<
+  | { userId: string; entitlements: ReturnType<typeof entitlementsFor> }
+  | NextResponse
+> {
   const cookieHeader = request.headers.get("cookie");
   const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
   if (!user) {
@@ -69,12 +42,18 @@ async function requirePro(
   return { userId: user.id, entitlements };
 }
 
+/** Normalises dates/JSON values before CSV/JSON serialisation. */
+function normaliseValue(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString();
+  return value;
+}
+
 /**
  * Escapes a CSV field to prevent formula injection and handle special chars.
  */
 function escapeCsvField(value: unknown): string {
   if (value == null) return "";
-  let str = String(value);
+  let str = String(normaliseValue(value));
   // If the field starts with =, +, -, @, or tab, prepend a tab to prevent
   // spreadsheet formula injection.
   if (/^[=+\-@\t]/.test(str)) {
@@ -95,12 +74,7 @@ export async function GET(
   const { format } = await params;
   const result = await requirePro(request);
   if (result instanceof NextResponse) return result;
-  const { entitlements } = result;
-
-  const pb = await getAdminPb();
-  if (!pb) {
-    return NextResponse.json({ error: "Service unavailable." }, { status: 503 });
-  }
+  const { entitlements, userId } = result;
 
   const searchParams = request.nextUrl.searchParams;
   const sector = searchParams.get("sector") || undefined;
@@ -112,29 +86,47 @@ export async function GET(
 
   // Validate filters.
   if (sector && !isValidSectorId(sector)) {
-    return NextResponse.json({ error: `Invalid sector: ${sector}` }, { status: 400 });
+    return NextResponse.json(
+      { error: `Invalid sector: ${sector}` },
+      { status: 400 },
+    );
   }
   if (region && !isValidRegion(region)) {
-    return NextResponse.json({ error: `Invalid region: ${region}` }, { status: 400 });
+    return NextResponse.json(
+      { error: `Invalid region: ${region}` },
+      { status: 400 },
+    );
   }
 
-  const filterParts: string[] = [`is_demonstration = false`];
-  if (sector) filterParts.push(`sector = "${sector}"`);
-  if (region) filterParts.push(`region = "${region}"`);
+  const conditions = ["is_demonstration = FALSE"];
+  const values: unknown[] = [];
+
+  if (sector) {
+    values.push(sector);
+    conditions.push(`sector = $${values.length}`);
+  }
+  if (region) {
+    values.push(region);
+    conditions.push(`region = $${values.length}`);
+  }
+  values.push(limit);
 
   try {
-    const records = await pb.collection("opportunities").getFullList({
-      filter: filterParts.join(" && "),
-      limit,
-    });
+    const records = await query(
+      `SELECT *
+         FROM opportunities
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY COALESCE(published_date, created_at) DESC
+        LIMIT $${values.length}`,
+      values,
+    );
 
     const permitted = permittedOpportunityFields(entitlements);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sanitized = records.map((item: any) => {
+    const sanitized = records.rows.map((item) => {
       const out: Record<string, unknown> = {};
       for (const field of permitted) {
         if (field in item) {
-          out[field] = (item as Record<string, unknown>)[field];
+          out[field] = normaliseValue(item[field]);
         }
       }
       return out;
@@ -142,11 +134,8 @@ export async function GET(
 
     if (format === "csv") {
       const headers = permitted.join(",");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rows = sanitized.map((item: any) =>
-        permitted
-          .map((f) => escapeCsvField(item[f]))
-          .join(","),
+      const rows = sanitized.map((item) =>
+        permitted.map((field) => escapeCsvField(item[field])).join(","),
       );
       const csv = [headers, ...rows].join("\n");
 
@@ -180,9 +169,19 @@ export async function GET(
       });
     }
 
-    return NextResponse.json({ error: "Invalid format. Use 'csv' or 'json'." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid format. Use 'csv' or 'json'." },
+      { status: 400 },
+    );
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Export failed.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    error("export_failed", {
+      userId,
+      format,
+      error: err instanceof Error ? err.stack ?? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: "Unable to generate the export." },
+      { status: 500 },
+    );
   }
 }

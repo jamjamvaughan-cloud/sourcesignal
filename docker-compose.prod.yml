@@ -1,36 +1,63 @@
-# SourceSignal Production Infrastructure
+# SourceSignal production infrastructure (FastHost VPS)
 #
-# Multi-threaded PostgreSQL + PgBouncer + Redis setup for hyper-scale concurrency.
+# Runs the backend half of the split deployment:
+#   - Next.js API (the same codebase as the Vercel frontend)
+#   - PostgreSQL + PgBouncer + Redis (internal network only)
+#   - Caddy terminating TLS for api.sourcesignal.site
+#   - optional ingestion worker (profile: ingestion)
+#
+# The Vercel frontend is deployed separately and proxies /api/* here.
 #
 # Usage:
-#   docker compose -f docker-compose.prod.yml up -d
+#   cp .env.production.example .env    # then fill in real secrets
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Nothing except Caddy publishes ports to the host. PostgreSQL, PgBouncer and
+# Redis are reachable only from other containers on the backend network.
+
+name: sourcesignal
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
 
 services:
   # ---------------------------------------------------------------
-  # PostgreSQL 16 — Primary database
+  # PostgreSQL 16 — Primary database (internal only)
   # ---------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
     container_name: sourcesignal-postgres
     environment:
-      POSTGRES_USER: sourcesignal
-      POSTGRES_PASSWORD: secretpassword
-      POSTGRES_DB: sourcesignal_db
+      POSTGRES_USER: ${POSTGRES_USER:-sourcesignal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-sourcesignal_db}
       PGDATA: /var/lib/postgresql/data
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
+    networks:
+      - backend
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sourcesignal -d sourcesignal_db"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\"",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
     shm_size: 256mb
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
 
   # ---------------------------------------------------------------
-  # PgBouncer — Connection pooler (transaction mode)
+  # PgBouncer — connection pooler (internal only)
   # ---------------------------------------------------------------
   pgbouncer:
     image: edoburu/pgbouncer:latest
@@ -39,62 +66,178 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      # PgBouncer configuration via environment variables
-      PGBOUNCER_LISTEN_PORT: 6432
-      PGBOUNCER_LISTEN_ADDR: "*"
-      PGBOUNCER_AUTH_TYPE: md5
-      PGBOUNCER_AUTH_FILE: /etc/pgbouncer/userlist.txt
-      PGBOUNCER_POOL_MODE: transaction
-      PGBOUNCER_MAX_CLIENT_CONN: 10000
-      PGBOUNCER_DEFAULT_POOL_SIZE: 1000
-      PGBOUNCER_RESERVE_POOL_SIZE: 100
-      PGBOUNCER_RESERVE_POOL_TIMEOUT: 3
-      PGBOUNCER_SERVER_IDLE_TIMEOUT: 30
-      PGBOUNCER_SERVER_LIFETIME: 3600
-      PGBOUNCER_SERVER_CONNECT_TIMEOUT: 15
-      PGBOUNCER_QUERY_WAIT_TIMEOUT: 60
-      PGBOUNCER_DEFAULT_DBNAME: sourcesignal_db
-      PGBOUNCER_DEFAULT_HOST: postgres
-      PGBOUNCER_DEFAULT_PORT: 5432
-      PGBOUNCER_DEFAULT_USER: sourcesignal
-      PGBOUNCER_DEFAULT_PASSWORD: secretpassword
-    volumes:
-      - ./pgbouncer_userlist.txt:/etc/pgbouncer/userlist.txt:ro
-      - pgbouncer_config:/etc/pgbouncer
-    ports:
-      - "6432:6432"
+      DB_USER: ${POSTGRES_USER:-sourcesignal}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-sourcesignal_db}
+      LISTEN_PORT: "6432"
+      LISTEN_ADDR: "0.0.0.0"
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "50"
+      RESERVE_POOL_SIZE: "10"
+      SERVER_IDLE_TIMEOUT: "30"
+      SERVER_LIFETIME: "3600"
+      SERVER_CONNECT_TIMEOUT: "15"
+      QUERY_WAIT_TIMEOUT: "60"
+    expose:
+      - "6432"
+    networks:
+      - backend
     healthcheck:
-      test: ["CMD", "pg_isready", "-p", "6432"]
+      test:
+        ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U \"$$DB_USER\""]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
 
   # ---------------------------------------------------------------
-  # Redis 7 — Cache & session store (persistent)
+  # Redis 7 — cache & session store (internal only)
   # ---------------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: sourcesignal-redis
-    command: >
-      redis-server
-      --appendonly yes
-      --save 900 1
-      --save 300 10
-      --save 60 10000
-      --requirepass redispassword
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    command:
+      [
+        "sh",
+        "-c",
+        "exec redis-server --appendonly yes --save 900 1 --save 300 10 --save 60 10000 --requirepass \"$$REDIS_PASSWORD\"",
+      ]
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
+    expose:
+      - "6379"
+    networks:
+      - backend
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "redispassword", "ping"]
+      test:
+        ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+
+  # ---------------------------------------------------------------
+  # Next.js API — backend half of the split deployment
+  # ---------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?Set NEXT_PUBLIC_APP_URL in .env}
+        APP_ORIGIN: ${APP_ORIGIN:?Set APP_ORIGIN in .env}
+    container_name: sourcesignal-api
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      # BACKEND_URL must NOT be set here: the API serves its own routes.
+    expose:
+      - "3000"
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+      - edge
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:3000/api/health >/dev/null 2>&1 || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+
+  # ---------------------------------------------------------------
+  # Caddy — TLS + reverse proxy for api.sourcesignal.site
+  # ---------------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    container_name: sourcesignal-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    depends_on:
+      api:
+        condition: service_started
+    networks:
+      - edge
+    restart: unless-stopped
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+
+  # ---------------------------------------------------------------
+  # Ingestion worker (optional)
+  #
+  # NOTE: the worker still writes to PocketBase (see
+  # worker/src/pipeline/upsert.ts), while the web app reads PostgreSQL.
+  # Until that migration lands, start this profile only if you are also
+  # running PocketBase. The web app will not see the ingested records.
+  #
+  #   docker compose -f docker-compose.prod.yml --profile ingestion up -d worker
+  # ---------------------------------------------------------------
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: sourcesignal-worker
+    profiles:
+      - ingestion
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  # Database/cache/API traffic. No host ports are published on this network.
+  backend:
+    driver: bridge
+  # Public-facing network used only by Caddy and the API.
+  edge:
+    driver: bridge
 
 volumes:
   postgres_data:
-  pgbouncer_config:
   redis_data:
+  caddy_data:
+  caddy_config:

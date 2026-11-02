@@ -1,54 +1,49 @@
-import { headers } from "next/headers";
-import { getCurrentUser } from "@/lib/auth";
-import { getUserPlanIdFromPB } from "@/lib/auth";
-import { type PlanId } from "@/lib/entitlements";
 import { entitlementsFor } from "@/lib/entitlements";
-import { getOpportunity } from "@/lib/opportunities";
+import { backendJson, getSessionContext } from "@/lib/backend";
 import { notFound } from "next/navigation";
 import { ExternalLink, ShieldCheck, AlertTriangle } from "lucide-react";
 import { extractBuyerEmails } from "@/lib/nvidia";
 import { governmentServiceJsonLd } from "@/lib/seo";
 import type { Metadata } from "next";
 
+interface OpportunityRecord {
+  id: string;
+  canonical_id: string;
+  title: string;
+  buyer: string | null;
+  sector: string;
+  region: string;
+  estimated_value?: number | null;
+  currency: string | null;
+  procurement_stage: string | null;
+  published_date?: string | null;
+  closing_date?: string | null;
+  source_url: string | null;
+  source_hash?: string | null;
+  confidence?: number | null;
+  summary?: string | null;
+  location?: string | null;
+  winningBidder?: string | null;
+  subcontractors?: string | null;
+  is_demonstration?: boolean;
+}
+
 function str(val: unknown): string {
   return val == null ? "" : String(val);
 }
 
-async function getUserPlanId(): Promise<PlanId> {
-  const headersList = await headers();
-  const cookieHeader = headersList.get("cookie");
-  const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
-  if (!user) return "free";
-  return getUserPlanIdFromPB(user.id);
+async function fetchOpportunity(id: string): Promise<OpportunityRecord | null> {
+  const result = await backendJson<{ opportunity?: OpportunityRecord }>(
+    `/api/opportunities/${encodeURIComponent(id)}`,
+  );
+  return result?.opportunity ?? null;
 }
 
 export async function generateMetadata({
   params,
 }: Readonly<{ params: Promise<{ id: string }> }>): Promise<Metadata> {
   const { id } = await params;
-  const planId = await getUserPlanId();
-  const entitlements = entitlementsFor(planId);
-  const opportunity = (await getOpportunity(id, entitlements)) as {
-    id: string;
-    canonical_id: string;
-    title: string;
-    buyer: string | null;
-    sector: string;
-    region: string;
-    estimated_value?: number | null;
-    currency: string | null;
-    procurement_stage: string | null;
-    published_date?: string | null;
-    closing_date?: string | null;
-    source_url: string | null;
-    source_hash?: string | null;
-    confidence?: number | null;
-    summary?: string | null;
-    location?: string | null;
-    winningBidder?: string | null;
-    subcontractors?: string | null;
-    is_demonstration?: boolean;
-  };
+  const opportunity = await fetchOpportunity(id);
 
   if (!opportunity) {
     return {
@@ -78,30 +73,10 @@ export default async function OpportunityDetailPage({
   params,
 }: Readonly<{ params: Promise<{ id: string }> }>) {
   const { id } = await params;
-  const planId = await getUserPlanId();
+  const { planId } = await getSessionContext();
   const entitlements = entitlementsFor(planId);
+  const opportunity = await fetchOpportunity(id);
 
-  const opportunity = (await getOpportunity(id, entitlements)) as {
-    id: string;
-    canonical_id: string;
-    title: string;
-    buyer: string | null;
-    sector: string;
-    region: string;
-    estimated_value?: number | null;
-    currency: string | null;
-    procurement_stage: string | null;
-    published_date?: string | null;
-    closing_date?: string | null;
-    source_url: string | null;
-    source_hash?: string | null;
-    confidence?: number | null;
-    summary?: string | null;
-    location?: string | null;
-    winningBidder?: string | null;
-    subcontractors?: string | null;
-    is_demonstration?: boolean;
-  };
   if (!opportunity) {
     notFound();
   }

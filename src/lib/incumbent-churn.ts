@@ -12,8 +12,7 @@
  * displace entrenched competitors.
  */
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getAdminPb = async () => null as any;
+import { query } from "@/lib/db";
 import { error, info } from "@/lib/logger";
 
 /** Historical award record for churn analysis. */
@@ -28,8 +27,8 @@ interface ChurnAward {
   region: string | null;
   closing_date: string | null;
   procurement_stage: string | null;
-  created: string | null;
-  updated: string | null;
+  created_at: string | null;
+  updated_at: string | null;
   detail_fields: Record<string, unknown> | null;
 }
 
@@ -43,42 +42,37 @@ function daysBetween(dateA: string, dateB: string): number {
 }
 
 /**
- * Fetch historical awards for churn analysis.
+ * Fetch historical awards for churn analysis from PostgreSQL.
  */
 async function fetchChurnAwards(lookbackDays: number = 3 * 365): Promise<ChurnAward[]> {
-  const pb = await getAdminPb();
-  if (!pb) {
-    error("incumbent_churn", {
-      error: "PocketBase unavailable for churn analysis fetch",
-    });
-    return [];
-  }
-
-  const cutoffDate = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString();
-
   try {
-    const records = await pb.collection("opportunities").getFullList({
-      filter: `created >= "${cutoffDate}" && winner != "" && winner != null`,
-      fields:
-        "id,canonical_id,title,buyer,buyer_canonical_id,winner,sector,region,closing_date,procurement_stage,created,updated,detail_fields",
-      sort: "-created",
-    });
+    const records = await query(
+      `SELECT id, canonical_id, title, buyer, buyer_canonical_id, winner,
+              sector, region, closing_date, procurement_stage, created_at,
+              updated_at, detail_fields
+         FROM opportunities
+        WHERE created_at >= NOW() - ($1 || ' days')::interval
+          AND winner IS NOT NULL
+          AND winner != ''
+        ORDER BY created_at DESC`,
+      [lookbackDays],
+    );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return records.map((item: any) => ({
-      id: item.id,
+    return records.rows.map((item) => ({
+      id: item.id as string,
       canonical_id: item.canonical_id as string,
       title: item.title as string,
-      buyer: item.buyer as string | null,
-      buyer_canonical_id: item.buyer_canonical_id as string | null,
-      winner: item.winner as string | null,
-      sector: item.sector as string | null,
-      region: item.region as string | null,
-      closing_date: item.closing_date as string | null,
-      procurement_stage: item.procurement_stage as string | null,
-      created: item.created as string | null,
-      updated: item.updated as string | null,
-      detail_fields: (item.detail_fields as Record<string, unknown> | null) ?? null,
+      buyer: (item.buyer as string | null) ?? null,
+      buyer_canonical_id: (item.buyer_canonical_id as string | null) ?? null,
+      winner: (item.winner as string | null) ?? null,
+      sector: (item.sector as string | null) ?? null,
+      region: (item.region as string | null) ?? null,
+      closing_date: (item.closing_date as string | null) ?? null,
+      procurement_stage: (item.procurement_stage as string | null) ?? null,
+      created_at: (item.created_at as string | null) ?? null,
+      updated_at: (item.updated_at as string | null) ?? null,
+      detail_fields:
+        (item.detail_fields as Record<string, unknown> | null) ?? null,
     }));
   } catch (err) {
     error("incumbent_churn", {
@@ -203,7 +197,8 @@ export async function getAllBuyerChurnProfiles(): Promise<BuyerChurnProfile[]> {
     // Calculate winner changes (sequential contracts with different winners).
     const sortedByDate = [...buyerAwards].sort(
       (a, b) =>
-        new Date(a.created ?? now).getTime() - new Date(b.created ?? now).getTime(),
+        new Date(a.created_at ?? now).getTime() -
+        new Date(b.created_at ?? now).getTime(),
     );
     let winnerChanges = 0;
     let lastWinner: string | null = null;

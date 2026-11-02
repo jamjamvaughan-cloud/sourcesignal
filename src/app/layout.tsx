@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { validateServerEnv } from "@/lib/env";
 import { SiteChrome } from "@/components/site-chrome";
 import { CookieBanner } from "@/components/ui/cookie-banner";
 import { organizationJsonLd, dataCatalogJsonLd } from "@/lib/seo";
@@ -45,7 +44,6 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  validateServerEnv();
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased bg-black text-white`}>
       <head>

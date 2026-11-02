@@ -1,8 +1,5 @@
-import { headers } from "next/headers";
 import Link from "next/link";
-import { getCurrentUser } from "@/lib/auth";
-import { listOpportunities } from "@/lib/opportunities";
-import { entitlementsFor } from "@/lib/entitlements";
+import { backendJson, getSessionContext } from "@/lib/backend";
 import {
   Activity,
   TrendingUp,
@@ -38,55 +35,27 @@ interface Opportunity {
   updated_at?: string | null;
 }
 
-interface UserContext {
-  id: string;
-  email: string;
-  country?: string | null;
-}
-
-async function getUserContext(): Promise<UserContext | null> {
-  const headersList = await headers();
-  const cookieHeader = headersList.get("cookie");
-  const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
-  if (!user) return null;
-  return {
-    id: user.id,
-    email: user.email,
-    country: user.country ?? null,
-  };
+interface OpportunitiesResponse {
+  items?: Opportunity[];
 }
 
 async function fetchDashboardMetrics(userCountry: string | null): Promise<{
   opportunities: Opportunity[];
 }> {
-  const headersList = await headers();
-  const cookieHeader = headersList.get("cookie");
-  const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
-  if (!user) {
-    return { opportunities: [] };
+  const params = new URLSearchParams({
+    page: "1",
+    perPage: "100",
+    sort: "-created_at",
+  });
+  if (userCountry) {
+    params.set("country", userCountry);
   }
 
-  try {
-    const entitlements = entitlementsFor("pro");
-    const filters: Record<string, string | undefined> = {
-      page: "1",
-      perPage: "100",
-      sort: "-created_at",
-    };
+  const result = await backendJson<OpportunitiesResponse>(
+    `/api/opportunities?${params.toString()}`,
+  );
 
-    // Filter by user's country if they have one set from signup
-    if (userCountry) {
-      filters.country = userCountry;
-    }
-
-    const result = await listOpportunities(entitlements, filters);
-
-    const opportunities = (result.items as unknown as Opportunity[]) ?? [];
-
-    return { opportunities };
-  } catch {
-    return { opportunities: [] };
-  }
+  return { opportunities: result?.items ?? [] };
 }
 
 /** Generates deterministic sparkline data points for the hero card. */
@@ -106,8 +75,8 @@ export default async function ExecutiveDashboardPage({
   searchParams: Promise<{ tier?: string }>;
 }) {
   const resolvedSearchParams = await searchParams;
-  const userContext = await getUserContext();
-  const userCountry = userContext?.country ?? null;
+  const { user } = await getSessionContext();
+  const userCountry = user?.country ?? null;
   const { opportunities } = await fetchDashboardMetrics(userCountry);
   const points = sparklinePoints();
   const maxPoint = Math.max(...points);
