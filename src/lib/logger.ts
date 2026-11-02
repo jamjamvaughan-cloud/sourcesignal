@@ -27,7 +27,6 @@ function sanitize(obj: unknown): unknown {
     const sensitiveKeys = new Set([
       "password", "api_key", "apikey", "secret", "token", "authorization",
       "stripe_secret_key", "stripe_webhook_secret", "nvidia_api_key",
-      "pocketbase_admin_password",
     ]);
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
