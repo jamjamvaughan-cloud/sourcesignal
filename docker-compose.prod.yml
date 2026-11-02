@@ -1,0 +1,100 @@
+# SourceSignal Production Infrastructure
+#
+# Multi-threaded PostgreSQL + PgBouncer + Redis setup for hyper-scale concurrency.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+
+services:
+  # ---------------------------------------------------------------
+  # PostgreSQL 16 — Primary database
+  # ---------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: sourcesignal-postgres
+    environment:
+      POSTGRES_USER: sourcesignal
+      POSTGRES_PASSWORD: secretpassword
+      POSTGRES_DB: sourcesignal_db
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sourcesignal -d sourcesignal_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    shm_size: 256mb
+
+  # ---------------------------------------------------------------
+  # PgBouncer — Connection pooler (transaction mode)
+  # ---------------------------------------------------------------
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: sourcesignal-pgbouncer
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # PgBouncer configuration via environment variables
+      PGBOUNCER_LISTEN_PORT: 6432
+      PGBOUNCER_LISTEN_ADDR: "*"
+      PGBOUNCER_AUTH_TYPE: md5
+      PGBOUNCER_AUTH_FILE: /etc/pgbouncer/userlist.txt
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_MAX_CLIENT_CONN: 10000
+      PGBOUNCER_DEFAULT_POOL_SIZE: 1000
+      PGBOUNCER_RESERVE_POOL_SIZE: 100
+      PGBOUNCER_RESERVE_POOL_TIMEOUT: 3
+      PGBOUNCER_SERVER_IDLE_TIMEOUT: 30
+      PGBOUNCER_SERVER_LIFETIME: 3600
+      PGBOUNCER_SERVER_CONNECT_TIMEOUT: 15
+      PGBOUNCER_QUERY_WAIT_TIMEOUT: 60
+      PGBOUNCER_DEFAULT_DBNAME: sourcesignal_db
+      PGBOUNCER_DEFAULT_HOST: postgres
+      PGBOUNCER_DEFAULT_PORT: 5432
+      PGBOUNCER_DEFAULT_USER: sourcesignal
+      PGBOUNCER_DEFAULT_PASSWORD: secretpassword
+    volumes:
+      - ./pgbouncer_userlist.txt:/etc/pgbouncer/userlist.txt:ro
+      - pgbouncer_config:/etc/pgbouncer
+    ports:
+      - "6432:6432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-p", "6432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------
+  # Redis 7 — Cache & session store (persistent)
+  # ---------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: sourcesignal-redis
+    command: >
+      redis-server
+      --appendonly yes
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --requirepass redispassword
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redispassword", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  pgbouncer_config:
+  redis_data:

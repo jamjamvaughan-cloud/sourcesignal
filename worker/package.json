@@ -1,0 +1,21 @@
+{
+  "name": "sourcesignal-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SourceSignal ingestion worker — polls sources and normalises procurement records",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "ingest": "tsx src/index.ts --once",
+    "health": "tsx src/health.ts"
+  },
+  "dependencies": {
+    "pocketbase": "^0.28.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "tsx": "^4.23.15",
+    "typescript": "^5"
+  }
+}

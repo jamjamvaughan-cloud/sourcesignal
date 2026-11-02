@@ -1,0 +1,32 @@
+# SourceSignal robots.txt
+# https://sourcesignal.example.com/robots.txt
+
+User-agent: *
+Disallow: /api/
+Disallow: /api/auth/
+Disallow: /api/opportunities/
+Disallow: /api/saved-opportunities/
+Disallow: /api/alerts/
+Disallow: /api/exports/
+Disallow: /api/webhooks/
+Disallow: /api/stripe/
+Disallow: /dashboard/
+Disallow: /_next/
+Disallow: /_next/static/
+
+User-agent: GPTBot
+Allow: /
+Disallow: /api/
+Disallow: /dashboard/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /api/
+Disallow: /dashboard/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+Disallow: /dashboard/
+
+Sitemap: https://sourcesignal.example.com/sitemap.xml
