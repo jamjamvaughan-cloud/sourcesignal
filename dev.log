@@ -1,0 +1,276 @@
+
+> sourcesignal@0.1.0 dev
+> next dev -H localhost -p 3000
+
+▲ Next.js 16.4.3 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://localhost:3000
+- Environments: .env.local, .env
+✓ Ready in 536ms
+✓ Running next.config.ts took 41ms
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+
+  To migrate automatically, run:
+  npx @next/codemod@canary middleware-to-proxy .
+
+  Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+
+⚠ ./src/lib/rate-limit.ts:62:31
+Warning: Module not found: Can't resolve 'redis'
+  [90m60 |[0m     [90m// Dynamic import so the redis package is optional.[0m
+  [90m61 |[0m     [90m// @ts-expect-error — redis is an optional dependency, not installed by default.[0m
+[33m[1m>[0m [90m62 |[0m     [36mconst[0m redisModule = [36mawait[0m [36mimport[0m([32m"redis"[0m);
+  [90m   |[0m                               [33m[1m^^^^^^^^^^^^^^^[0m
+  [90m63 |[0m     [36mconst[0m { createClient } = redisModule [36mas[0m unknown [36mas[0m {
+  [90m64 |[0m       createClient: (opts: { url: string }) => [33mRedisClient[0m;
+  [90m65 |[0m     };
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/rate-limit.ts
+    ./src/app/api/auth/[action]/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ POST /api/auth/signup 200 in 1348ms (next.js: 998ms, proxy.ts: 5ms, application-code: 346ms)
+⚠ ./src/lib/rate-limit.ts:62:31
+Warning: Module not found: Can't resolve 'redis'
+  [90m60 |[0m     [90m// Dynamic import so the redis package is optional.[0m
+  [90m61 |[0m     [90m// @ts-expect-error — redis is an optional dependency, not installed by default.[0m
+[33m[1m>[0m [90m62 |[0m     [36mconst[0m redisModule = [36mawait[0m [36mimport[0m([32m"redis"[0m);
+  [90m   |[0m                               [33m[1m^^^^^^^^^^^^^^^[0m
+  [90m63 |[0m     [36mconst[0m { createClient } = redisModule [36mas[0m unknown [36mas[0m {
+  [90m64 |[0m       createClient: (opts: { url: string }) => [33mRedisClient[0m;
+  [90m65 |[0m     };
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/rate-limit.ts
+    ./src/app/api/auth/[action]/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ POST /api/auth/signin 200 in 118ms (next.js: 27ms, proxy.ts: 3ms, application-code: 87ms)
+⚠ ./src/lib/rate-limit.ts:62:31
+Warning: Module not found: Can't resolve 'redis'
+  [90m60 |[0m     [90m// Dynamic import so the redis package is optional.[0m
+  [90m61 |[0m     [90m// @ts-expect-error — redis is an optional dependency, not installed by default.[0m
+[33m[1m>[0m [90m62 |[0m     [36mconst[0m redisModule = [36mawait[0m [36mimport[0m([32m"redis"[0m);
+  [90m   |[0m                               [33m[1m^^^^^^^^^^^^^^^[0m
+  [90m63 |[0m     [36mconst[0m { createClient } = redisModule [36mas[0m unknown [36mas[0m {
+  [90m64 |[0m       createClient: (opts: { url: string }) => [33mRedisClient[0m;
+  [90m65 |[0m     };
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/rate-limit.ts
+    ./src/app/api/auth/[action]/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /dashboard 200 in 533ms (next.js: 237ms, proxy.ts: 4ms, application-code: 291ms)
+⚠ ./src/lib/rate-limit.ts:62:31
+Warning: Module not found: Can't resolve 'redis'
+  [90m60 |[0m     [90m// Dynamic import so the redis package is optional.[0m
+  [90m61 |[0m     [90m// @ts-expect-error — redis is an optional dependency, not installed by default.[0m
+[33m[1m>[0m [90m62 |[0m     [36mconst[0m redisModule = [36mawait[0m [36mimport[0m([32m"redis"[0m);
+  [90m   |[0m                               [33m[1m^^^^^^^^^^^^^^^[0m
+  [90m63 |[0m     [36mconst[0m { createClient } = redisModule [36mas[0m unknown [36mas[0m {
+  [90m64 |[0m       createClient: (opts: { url: string }) => [33mRedisClient[0m;
+  [90m65 |[0m     };
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/rate-limit.ts
+    ./src/app/api/auth/[action]/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /dashboard 200 in 286ms (next.js: 93ms, proxy.ts: 27ms, application-code: 166ms)
+⚠ ./src/lib/rate-limit.ts:62:31
+Warning: Module not found: Can't resolve 'redis'
+  [90m60 |[0m     [90m// Dynamic import so the redis package is optional.[0m
+  [90m61 |[0m     [90m// @ts-expect-error — redis is an optional dependency, not installed by default.[0m
+[33m[1m>[0m [90m62 |[0m     [36mconst[0m redisModule = [36mawait[0m [36mimport[0m([32m"redis"[0m);
+  [90m   |[0m                               [33m[1m^^^^^^^^^^^^^^^[0m
+  [90m63 |[0m     [36mconst[0m { createClient } = redisModule [36mas[0m unknown [36mas[0m {
+  [90m64 |[0m       createClient: (opts: { url: string }) => [33mRedisClient[0m;
+  [90m65 |[0m     };
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/rate-limit.ts
+    ./src/app/api/auth/[action]/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/rate-limit.ts:62:31
+Warning: Module not found: Can't resolve 'redis'
+  [90m60 |[0m     [90m// Dynamic import so the redis package is optional.[0m
+  [90m61 |[0m     [90m// @ts-expect-error — redis is an optional dependency, not installed by default.[0m
+[33m[1m>[0m [90m62 |[0m     [36mconst[0m redisModule = [36mawait[0m [36mimport[0m([32m"redis"[0m);
+  [90m   |[0m                               [33m[1m^^^^^^^^^^^^^^^[0m
+  [90m63 |[0m     [36mconst[0m { createClient } = redisModule [36mas[0m unknown [36mas[0m {
+  [90m64 |[0m       createClient: (opts: { url: string }) => [33mRedisClient[0m;
+  [90m65 |[0m     };
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/rate-limit.ts
+    ./src/app/api/auth/[action]/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /dashboard/saved 200 in 148ms (next.js: 97ms, proxy.ts: 7ms, application-code: 44ms)
+⚠ ./src/lib/rate-limit.ts:62:31
+Warning: Module not found: Can't resolve 'redis'
+  [90m60 |[0m     [90m// Dynamic import so the redis package is optional.[0m
+  [90m61 |[0m     [90m// @ts-expect-error — redis is an optional dependency, not installed by default.[0m
+[33m[1m>[0m [90m62 |[0m     [36mconst[0m redisModule = [36mawait[0m [36mimport[0m([32m"redis"[0m);
+  [90m   |[0m                               [33m[1m^^^^^^^^^^^^^^^[0m
+  [90m63 |[0m     [36mconst[0m { createClient } = redisModule [36mas[0m unknown [36mas[0m {
+  [90m64 |[0m       createClient: (opts: { url: string }) => [33mRedisClient[0m;
+  [90m65 |[0m     };
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/rate-limit.ts
+    ./src/app/api/auth/[action]/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /dashboard/alerts 200 in 131ms (next.js: 42ms, proxy.ts: 4ms, application-code: 85ms)
+⚠ ./src/lib/rate-limit.ts:62:31
+Warning: Module not found: Can't resolve 'redis'
+  [90m60 |[0m     [90m// Dynamic import so the redis package is optional.[0m
+  [90m61 |[0m     [90m// @ts-expect-error — redis is an optional dependency, not installed by default.[0m
+[33m[1m>[0m [90m62 |[0m     [36mconst[0m redisModule = [36mawait[0m [36mimport[0m([32m"redis"[0m);
+  [90m   |[0m                               [33m[1m^^^^^^^^^^^^^^^[0m
+  [90m63 |[0m     [36mconst[0m { createClient } = redisModule [36mas[0m unknown [36mas[0m {
+  [90m64 |[0m       createClient: (opts: { url: string }) => [33mRedisClient[0m;
+  [90m65 |[0m     };
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/rate-limit.ts
+    ./src/app/api/auth/[action]/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /dashboard/integrations 200 in 96ms (next.js: 38ms, proxy.ts: 5ms, application-code: 53ms)
+⚠ ./src/lib/rate-limit.ts:62:31
+Warning: Module not found: Can't resolve 'redis'
+  [90m60 |[0m     [90m// Dynamic import so the redis package is optional.[0m
+  [90m61 |[0m     [90m// @ts-expect-error — redis is an optional dependency, not installed by default.[0m
+[33m[1m>[0m [90m62 |[0m     [36mconst[0m redisModule = [36mawait[0m [36mimport[0m([32m"redis"[0m);
+  [90m   |[0m                               [33m[1m^^^^^^^^^^^^^^^[0m
+  [90m63 |[0m     [36mconst[0m { createClient } = redisModule [36mas[0m unknown [36mas[0m {
+  [90m64 |[0m       createClient: (opts: { url: string }) => [33mRedisClient[0m;
+  [90m65 |[0m     };
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/rate-limit.ts
+    ./src/app/api/auth/[action]/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ POST /api/auth/signout 200 in 34ms (next.js: 23ms, proxy.ts: 4ms, application-code: 8ms)
+⚠ ./src/lib/rate-limit.ts:62:31
+Warning: Module not found: Can't resolve 'redis'
+  [90m60 |[0m     [90m// Dynamic import so the redis package is optional.[0m
+  [90m61 |[0m     [90m// @ts-expect-error — redis is an optional dependency, not installed by default.[0m
+[33m[1m>[0m [90m62 |[0m     [36mconst[0m redisModule = [36mawait[0m [36mimport[0m([32m"redis"[0m);
+  [90m   |[0m                               [33m[1m^^^^^^^^^^^^^^^[0m
+  [90m63 |[0m     [36mconst[0m { createClient } = redisModule [36mas[0m unknown [36mas[0m {
+  [90m64 |[0m       createClient: (opts: { url: string }) => [33mRedisClient[0m;
+  [90m65 |[0m     };
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/rate-limit.ts
+    ./src/app/api/auth/[action]/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET / 200 in 1068ms (next.js: 1046ms, proxy.ts: 3ms, application-code: 19ms)
+⚠ ./src/lib/rate-limit.ts:62:31
+Warning: Module not found: Can't resolve 'redis'
+  [90m60 |[0m     [90m// Dynamic import so the redis package is optional.[0m
+  [90m61 |[0m     [90m// @ts-expect-error — redis is an optional dependency, not installed by default.[0m
+[33m[1m>[0m [90m62 |[0m     [36mconst[0m redisModule = [36mawait[0m [36mimport[0m([32m"redis"[0m);
+  [90m   |[0m                               [33m[1m^^^^^^^^^^^^^^^[0m
+  [90m63 |[0m     [36mconst[0m { createClient } = redisModule [36mas[0m unknown [36mas[0m {
+  [90m64 |[0m       createClient: (opts: { url: string }) => [33mRedisClient[0m;
+  [90m65 |[0m     };
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/rate-limit.ts
+    ./src/app/api/auth/[action]/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET / 200 in 3.0s (next.js: 2.7s, proxy.ts: 29ms, application-code: 223ms)
+⚠ ./src/lib/rate-limit.ts:62:31
+Warning: Module not found: Can't resolve 'redis'
+  [90m60 |[0m     [90m// Dynamic import so the redis package is optional.[0m
+  [90m61 |[0m     [90m// @ts-expect-error — redis is an optional dependency, not installed by default.[0m
+[33m[1m>[0m [90m62 |[0m     [36mconst[0m redisModule = [36mawait[0m [36mimport[0m([32m"redis"[0m);
+  [90m   |[0m                               [33m[1m^^^^^^^^^^^^^^^[0m
+  [90m63 |[0m     [36mconst[0m { createClient } = redisModule [36mas[0m unknown [36mas[0m {
+  [90m64 |[0m       createClient: (opts: { url: string }) => [33mRedisClient[0m;
+  [90m65 |[0m     };
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/rate-limit.ts
+    ./src/app/api/auth/[action]/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+✓ Compiled in 223ms
+✓ Compiled in 114ms
+✓ Compiled in 126ms
+✓ Compiled in 79ms
+✓ Compiled in 65ms
+✓ Compiled in 28ms
+✓ Compiled in 54ms
+✓ Compiled in 124ms
+[?25h

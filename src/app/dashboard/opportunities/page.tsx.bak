@@ -1,0 +1,78 @@
+"use client";
+
+import * as React from "react";
+import { useEffect, useState } from "react";
+import { SECTORS, REGIONS } from "@/lib/config";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { OpportunitiesTable } from "@/components/opportunities-table";
+import { Filter } from "lucide-react";
+
+export default function OpportunitiesPage() {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3 mb-1">
+        <h1 className="text-2xl font-bold text-white mb-0.5">Intelligence Terminal</h1>
+        <p className="text-xs font-mono text-slate-400">High-density procurement opportunity grid.</p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-[4px] border border-white/10 bg-[#0B101D]/90 backdrop-blur-xl shadow-[0_0_30px_-10px_rgba(0,0,0,0.5)] p-2">
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-slate-500" />
+          <Input
+            placeholder="Search title, buyer, summary…"
+            className="h-9 text-xs px-2.5 min-w-[180px] w-auto bg-[#060A12] border border-white/10 text-slate-200 placeholder-slate-500 focus:border-orange-500/50 focus:ring-0 rounded-[4px]"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Select defaultValue="All Sectors" onValueChange={() => {}}>
+            <SelectTrigger className="h-9 text-xs px-2 min-w-[120px] w-auto bg-[#060A12] border border-white/10 text-slate-200 focus:border-orange-500/50 focus:ring-0 rounded-[4px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="p-1">
+              <SelectItem value="All Sectors">All Sectors</SelectItem>
+              {SECTORS.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <Select defaultValue="All Regions" onValueChange={() => {}}>
+            <SelectTrigger className="h-9 text-xs px-2 min-w-[100px] w-auto bg-[#060A12] border border-white/10 text-slate-200 focus:border-orange-500/50 focus:ring-0 rounded-[4px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="p-1">
+              <SelectItem value="All Regions">All Regions</SelectItem>
+              {REGIONS.map((r) => (<SelectItem key={r} value={r}>{r}</SelectItem>))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <Select defaultValue="All Stages" onValueChange={() => {}}>
+            <SelectTrigger className="h-9 text-xs px-2 min-w-[100px] w-auto bg-[#060A12] border border-white/10 text-slate-200 focus:border-orange-500/50 focus:ring-0 rounded-[4px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="p-1">
+              <SelectItem value="All Stages">All Stages</SelectItem>
+              <SelectItem value="published">Published</SelectItem>
+              <SelectItem value="evaluation">Evaluation</SelectItem>
+              <SelectItem value="planned">Planned</SelectItem>
+              <SelectItem value="awarded">Awarded</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button variant="ghost" className="text-[10px] font-medium text-slate-400 hover:text-white hover:bg-white/5 rounded-[4px] transition-colors">
+          <Filter className="h-4 w-4 mr-1" /> Reset
+        </Button>
+      </div>
+
+      <OpportunitiesTable opportunities={[]} />
+    </div>
+  );
