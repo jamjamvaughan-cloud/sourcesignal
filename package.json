@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start -H localhost -p 3000",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "ingest:signals": "npx --yes tsx scripts/ingest-signals.ts --watch",
+    "ingest:signals:once": "npx --yes tsx scripts/ingest-signals.ts --once"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

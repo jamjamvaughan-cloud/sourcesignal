@@ -127,6 +127,30 @@ npx tsc --noEmit # TypeScript type check
 npm run test    # Vitest test suite
 ```
 
+## Primary-source signal ingestion
+
+The unified PostgreSQL `signals` table is populated by nine adapters in
+`src/lib/ingestion/` across the UK, US and EU:
+
+| Jurisdiction | Adapters |
+| --- | --- |
+| UK | Find a Tender, Planning Data, Companies House |
+| US | USAspending, SAM.gov, SEC EDGAR |
+| EU | TED SPARQL, TED API, EU Open Data |
+
+Free sources run without credentials. Keyed adapters self-disable when their
+environment variables are absent (`COMPANIES_HOUSE_API_KEY`, `SAM_GOV_API_KEY`,
+`TED_EU_API_KEY`). Apply the schema first, then run a cycle:
+
+```bash
+npx tsx scripts/apply-schema.ts
+npm run ingest:signals:once   # single cycle
+npm run ingest:signals        # 15-minute background loop
+```
+
+Each row is keyed by a SHA-256 `source_hash`, so repeated runs are idempotent
+and duplicates are ignored.
+
 ## Project structure
 
 ```
@@ -174,6 +198,7 @@ src/
     nvidia.ts       # NVIDIA AI extraction client
     logger.ts       # Structured JSON logging
     opportunities.ts # Server-side opportunity service
+    ingestion/      # Primary-source adapters + background ingestion runner
     alerts.ts       # Alert dispatch service
     email-delivery.ts # Email delivery abstraction
   types/

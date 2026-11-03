@@ -495,3 +495,54 @@ CREATE TRIGGER update_adapters_updated_at BEFORE UPDATE ON adapters FOR EACH ROW
 
 DROP TRIGGER IF EXISTS update_alerts_updated_at ON alerts;
 CREATE TRIGGER update_alerts_updated_at BEFORE UPDATE ON alerts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- 21. Unified Primary Signals
+-- Normalised records from UK/US/EU primary-source ingestion adapters.
+-- source_hash is a SHA-256 of (adapter, jurisdiction, source, source ID) and
+-- is unique so repeated ingestion cycles are idempotent.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'signal_sector') THEN
+        CREATE TYPE signal_sector AS ENUM (
+            'TECH',
+            'ENERGY',
+            'HEALTHCARE',
+            'PUBLIC_SECTOR',
+            'CONSTRUCTION',
+            'TRANSPORT',
+            'LOGISTICS'
+        );
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'signal_opportunity_type') THEN
+        CREATE TYPE signal_opportunity_type AS ENUM (
+            'PROJECT',
+            'PROCUREMENT',
+            'EXPANSION',
+            'COMPLIANCE',
+            'POLICY'
+        );
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS signals (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title TEXT NOT NULL,
+    buyer_name TEXT NOT NULL,
+    jurisdiction VARCHAR(10) NOT NULL
+        CHECK (jurisdiction IN ('UK', 'US', 'EU')),
+    sector signal_sector NOT NULL,
+    opportunity_type signal_opportunity_type NOT NULL,
+    estimated_value NUMERIC(18, 2),
+    source_name VARCHAR(255) NOT NULL,
+    source_url TEXT NOT NULL,
+    source_hash VARCHAR(64) NOT NULL UNIQUE,
+    commercial_why TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_signals_created_at ON signals(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_signals_jurisdiction ON signals(jurisdiction);
+CREATE INDEX IF NOT EXISTS idx_signals_sector ON signals(sector);
+CREATE INDEX IF NOT EXISTS idx_signals_opportunity_type ON signals(opportunity_type);
+CREATE INDEX IF NOT EXISTS idx_signals_source_name ON signals(source_name);

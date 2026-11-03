@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { backendJson, getSessionContext } from "@/lib/backend";
+import { PRIMARY_SOURCES_MONITORED_LABEL } from "@/lib/ingestion/sources";
 import {
   DashboardWorkspace,
   type DashboardOpportunity,
@@ -38,5 +39,10 @@ export default async function DashboardPage() {
   const { user } = await getSessionContext();
   const opportunities = await fetchOpportunities(user?.country ?? null);
 
-  return <DashboardWorkspace opportunities={opportunities} />;
+  return (
+    <DashboardWorkspace
+      opportunities={opportunities}
+      primarySourcesLabel={PRIMARY_SOURCES_MONITORED_LABEL}
+    />
+  );
 }

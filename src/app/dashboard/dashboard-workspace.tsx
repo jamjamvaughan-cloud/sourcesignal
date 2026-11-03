@@ -28,6 +28,8 @@ export type DashboardOpportunity = SignalRecord;
 
 interface DashboardWorkspaceProps {
   opportunities: DashboardOpportunity[];
+  /** Quiet provenance line rendered directly below the search bar. */
+  primarySourcesLabel: string;
 }
 
 const SECTOR_CHIPS = [
@@ -179,6 +181,7 @@ function SignalCard({
 
 export function DashboardWorkspace({
   opportunities,
+  primarySourcesLabel,
 }: DashboardWorkspaceProps) {
   const [query, setQuery] = React.useState("");
   const [sector, setSector] = React.useState<string>("all");
@@ -371,6 +374,10 @@ export function DashboardWorkspace({
           </span>
         </div>
       </section>
+
+      <p className="border-b border-zinc-900 py-2 font-mono text-[11px] uppercase text-zinc-500">
+        {primarySourcesLabel}
+      </p>
 
       {filtered.length === 0 ? (
         <section className="border border-white/10 bg-[#050505] px-6 py-16 text-center">
