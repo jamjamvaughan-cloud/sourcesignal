@@ -120,72 +120,47 @@ function SignalCard({
           onOpen();
         }
       }}
-      className={`group cursor-pointer border bg-[#050505] p-4 transition-colors duration-150 ${
-        active
-          ? "border-[#D4AF37]"
-          : "border-white/10 hover:border-white/35 hover:bg-[#080808]"
+      className={`group cursor-pointer border border-zinc-800 bg-zinc-950 p-5 rounded-none hover:border-zinc-700 transition-colors ${
+        active ? "border-[#D4AF37]" : "border-zinc-700"
       }`}
     >
       {/* Meta line */}
-      <div className="flex items-center justify-between gap-3 font-mono text-[8px] uppercase tracking-[0.2em] text-zinc-500">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="border border-white/10 px-1.5 py-0.5 bg-white/5 text-[#D4AF37]">
-            {jurisdictionBadge(opportunity.region)}
-          </span>
-          <span className="border border-white/10 px-1.5 py-0.5 bg-white/5 text-zinc-400">
-            {sourceBadge(opportunity.source_name)}
-          </span>
-          <span className="truncate text-zinc-500">
-            {sectorLabel(opportunity.sector)}
-          </span>
-        </div>
-        <span className="flex-shrink-0 text-zinc-600">
-          {opportunityTypeLabel(opportunity.opportunity_type)}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="border border-white/10 px-1.5 py-0.5 bg-white/5 text-[#D4AF37]">
+          {jurisdictionBadge(opportunity.region)}
+        </span>
+        <span className="border border-white/10 px-1.5 py-0.5 bg-white/5 text-zinc-400">
+          {sourceBadge(opportunity.source_name)}
+        </span>
+        <span className="truncate text-zinc-500">
+          {sectorLabel(opportunity.sector)}
         </span>
       </div>
+      <span className="flex-shrink-0 text-zinc-600">
+        {opportunityTypeLabel(opportunity.opportunity_type)}
+      </span>
 
-      {/* Buyer + score */}
-      <div className="mt-3 flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h3 className="truncate font-mono text-base font-bold uppercase tracking-tight text-white">
-            {buyer}
-          </h3>
-          {opportunity.buyer && (
-            <p className="mt-1 line-clamp-2 font-mono text-[10px] leading-relaxed text-zinc-500">
-              {opportunity.title}
-            </p>
-          )}
-        </div>
-        <div className="flex-shrink-0 border-l border-white/10 pl-4 text-right">
-          <p className="font-mono text-[8px] uppercase tracking-[0.22em] text-zinc-600">
-            Score
-          </p>
-          <p className="font-mono text-2xl font-bold leading-none tabular-nums text-white">
-            {score == null ? "—" : score}
-            {score == null && (
-              <span className="ml-1 text-[7px] text-zinc-500 uppercase">locked</span>
-            )}
-          </p>
-        </div>
-      </div>
+      {/* Buyer */}
+      <h3 className="mt-3 font-mono text-base font-bold uppercase tracking-tight text-white truncate">
+        {buyer}
+      </h3>
+      {opportunity.buyer && (
+        <p className="mt-1 line-clamp-2 font-mono text-[10px] leading-relaxed text-zinc-500">
+          {opportunity.title}
+        </p>
+      )}
 
       {/* Core metrics */}
-      <div className="mt-4 grid grid-cols-2 gap-px bg-white/10">
-        <div className="bg-[#050505] py-2 pr-3">
-          <p className="font-mono text-[8px] uppercase tracking-[0.22em] text-zinc-600">
-            Est. spend
-          </p>
-          <p className="mt-1 font-mono text-sm font-bold tabular-nums text-white">
-            {spend === "UNDISCLOSED" ? "—" : spend}
-          </p>
+      <div className="mt-4 grid grid-cols-2 gap-4 py-3 border-y border-zinc-900 my-4 text-xs font-mono">
+        <div className="flex items-center justify-between">
+          <span className="text-zinc-500">Est. spend</span>
+          <span className="text-white font-bold">{spend === "UNDISCLOSED" ? "—" : spend}</span>
         </div>
-        <div className="bg-[#050505] py-2 pl-3 text-right">
-          <p className="font-mono text-[8px] uppercase tracking-[0.22em] text-zinc-600">
-            Closes
-          </p>
-          <p className="mt-1 font-mono text-sm font-bold tabular-nums text-white">
-            {closingLabel(opportunity.closing_date)}
-          </p>
+        <div className="flex items-center justify-between">
+          <span className="text-zinc-500">Timeframe</span>
+          <span className="text-white font-bold">
+            {closingLabel(opportunity.closing_date) === "—" ? "—" : closingLabel(opportunity.closing_date)}
+          </span>
         </div>
       </div>
 
@@ -205,7 +180,7 @@ function SignalCard({
       </div>
 
       {/* Capability badges */}
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      <div className="mt-4 flex flex-wrap items-center gap-1.5">
         {badges.map((badge) => (
           <span
             key={badge}
@@ -551,52 +526,39 @@ export function DashboardWorkspace({
             </button>
           </div>
 
-          <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-            {/* 60% signal stream */}
-            <section
-              aria-label="Priority signal feed"
-              className={`${mobilePanel === "cards" ? "block" : "hidden"} lg:block`}
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <p className="font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-500">
-                  Priority stream
-                </p>
-                <span className="flex items-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.18em] text-emerald-400">
-                  <span className="h-1.5 w-1.5 bg-emerald-400" />
-                  Live
-                </span>
-              </div>
-              <div className="space-y-3">
-                {filtered.map((opportunity) => (
-                  <SignalCard
-                    key={opportunity.id}
-                    opportunity={opportunity}
-                    active={selected?.id === opportunity.id}
-                    onOpen={() => setSelected(opportunity)}
-                  />
+          <div className="w-full max-w-7xl mx-auto px-4 py-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-zinc-800 pb-4 mb-6 gap-4">
+              {/* Filter & Sort Bar */}
+              <div className="flex flex-wrap gap-2 mb-4 sm:mb-0">
+                {SECTOR_CHIPS.map((chip) => (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    onClick={() => setSector(chip.id)}
+                    aria-pressed={sector === chip.id}
+                    className={`flex-shrink-0 whitespace-nowrap border px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.16em] transition-colors ${
+                      sector === chip.id
+                        ? "border-white bg-white text-black"
+                        : "border-white/10 text-zinc-500 hover:border-white/35 hover:text-white"
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
                 ))}
               </div>
-            </section>
+            </div>
 
-            {/* 40% sticky territory radar */}
-            <aside
-              className={`${
-                mobilePanel === "map" ? "block" : "hidden"
-              } lg:sticky lg:top-20 lg:block`}
-            >
-              <TerritoryRadar
-                points={radarPoints}
-                selectedId={selected?.id}
-                onSelect={openById}
-              />
-              <div className="mt-3 flex items-start gap-2 border border-white/10 px-3 py-2.5">
-                <MapPin className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-zinc-600" />
-                <p className="font-mono text-[8px] uppercase leading-relaxed tracking-[0.14em] text-zinc-600">
-                  Plot reflects captured primary-source evidence. Select any
-                  marker to open its provenance record.
-                </p>
-              </div>
-            </aside>
+            {/* Signal Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filtered.map((opportunity) => (
+                <SignalCard
+                  key={opportunity.id}
+                  opportunity={opportunity}
+                  active={selected?.id === opportunity.id}
+                  onOpen={() => setSelected(opportunity)}
+                />
+              ))}
+            </div>
           </div>
         </div>
       ) : (

@@ -3,12 +3,12 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-sm border border-white/10 bg-clip-padding text-sm font-inter font-medium whitespace-nowrap transition-all duration-300 ease-out outline-none select-none active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-sm border border-zinc-700 bg-clip-padding text-zinc-200 font-inter font-medium whitespace-nowrap transition-all duration-300 ease-out outline-none select-none active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
         default:
-          "bg-[#E5E5EA] text-[#09090b] hover:bg-zinc-200",
+          "bg-zinc-950 hover:bg-zinc-900 text-white border-zinc-700 hover:border-zinc-500 font-mono text-xs font-semibold uppercase tracking-wider px-4 py-2.5 rounded-none",
         outline:
           "border-white/10 bg-transparent text-[#E5E5EA] hover:bg-white/5 hover:border-white/20",
         secondary:
@@ -18,6 +18,12 @@ const buttonVariants = cva(
         destructive:
           "bg-[#7F1D1D]/10 text-[#7F1D1D] hover:bg-[#7F1D1D]/20 focus-visible:border-[#7F1D1D]/40 focus-visible:ring-[#7F1D1D]/20 dark:bg-[#7F1D1D]/20 dark:hover:bg-[#7F1D1D]/30 dark:focus-visible:ring-[#7F1D1D]/40",
         link: "text-primary underline-offset-4 hover:underline",
+        "primary-action":
+          "bg-zinc-950 hover:bg-zinc-900 text-white border-zinc-700 hover:border-zinc-500 font-mono text-xs font-semibold uppercase tracking-wider px-4 py-2.5 rounded-none",
+        "primary-cta":
+          "bg-emerald-500 hover:bg-emerald-400 text-black font-mono font-bold uppercase text-xs tracking-widest px-6 py-3 rounded-none shadow-[0_0_15px_rgba(16,185,129,0.25)] transition-all cursor-pointer",
+        "source-link":
+          "inline-flex items-center justify-center gap-2 text-xs font-mono border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 hover:text-white px-3.5 py-2.5 rounded-none transition-colors w-full sm:w-auto",
       },
       size: {
         default:
