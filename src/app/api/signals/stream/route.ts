@@ -3,11 +3,15 @@
  *
  * GET /api/signals/stream
  *
- * Streams live high-velocity signals to connected Pro dashboard clients.
+ * Streams live high-velocity signals to connected dashboard clients.
  * Polls PostgreSQL every few seconds for newly created signals in the
  * unified `signals` table and pushes them as SSE events.
  *
- * Requires Pro subscription. Uses text/event-stream content type.
+ * Requires an authenticated session. Free users see signals from their own
+ * signup country with Pro-only telemetry fields redacted. Pro/Enterprise
+ * users see all signals with full telemetry.
+ *
+ * Uses text/event-stream content type.
  */
 
 import { NextResponse } from "next/server";
@@ -35,11 +39,14 @@ const STREAMED_SECTORS = [
 const clients = new Set<ReadableStreamDefaultController<Uint8Array>>();
 
 /**
- * Authenticates the request and returns the user's entitlements.
- * Returns null if the user is not authenticated or not Pro.
+ * Authenticates the request and returns the user's session + entitlements.
+ * Returns null if the user is not authenticated.
  */
-async function requireProEntitlement(): Promise<{
+async function requireAuth(): Promise<{
+  userId: string;
+  country: string | null;
   entitlements: ReturnType<typeof entitlementsFor>;
+  isPro: boolean;
 } | null> {
   const headersList = await headers();
   const cookieHeader = headersList.get("cookie");
@@ -50,23 +57,52 @@ async function requireProEntitlement(): Promise<{
 
   const planId = await getUserPlanId(user.id);
   const entitlements = entitlementsFor(planId);
+  const isPro = entitlements.fullDetailsEnabled || entitlements.alertsEnabled;
 
-  if (!entitlements.mapEnabled && !entitlements.fullDetailsEnabled) {
-    return null;
-  }
+  return { userId: user.id, country: user.country ?? null, entitlements, isPro };
+}
 
-  return { entitlements };
+/**
+ * Sanitize a signal row for Free-tier users by stripping Pro-only telemetry
+ * fields. Pro users get the full payload.
+ */
+function sanitizeSignalForUser(
+  row: Record<string, unknown>,
+  isPro: boolean,
+): Record<string, unknown> {
+  if (isPro) return row;
+
+  return {
+    id: row.id,
+    title: row.title,
+    buyer_name: row.buyer_name,
+    jurisdiction: row.jurisdiction,
+    sector: row.sector,
+    opportunity_type: row.opportunity_type,
+    // Pro-only fields stripped for Free users
+    estimated_value: null,
+    source_name: row.source_name,
+    source_url: row.source_url,
+    source_hash: row.source_hash,
+    sha256_hash: row.sha256_hash,
+    commercial_why: null,
+    published_at: row.published_at,
+    created_at: row.created_at,
+  };
 }
 
 export async function GET(): Promise<NextResponse> {
-  // Authenticate and check Pro entitlement.
-  const auth = await requireProEntitlement();
+  // Authenticate the request. Any authenticated user can access the stream;
+  // Free users get redacted telemetry, Pro users get full telemetry.
+  const auth = await requireAuth();
   if (!auth) {
     return NextResponse.json(
-      { error: "Pro subscription required." },
-      { status: 403 },
+      { error: "Not authenticated." },
+      { status: 401 },
     );
   }
+
+  const { userId, country, entitlements, isPro } = auth;
 
   const encoder = new TextEncoder();
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -79,6 +115,9 @@ export async function GET(): Promise<NextResponse> {
       clients.add(controller);
       info("sse_stream", {
         message: "SSE client connected",
+        userId,
+        country,
+        isPro,
         totalClients: clients.size,
       });
 
@@ -90,17 +129,27 @@ export async function GET(): Promise<NextResponse> {
 
       const poll = async () => {
         try {
+          const conditions: string[] = [];
+          const params: unknown[] = [];
+          let paramIndex = 1;
+
+          // Free users only see signals from their signup country.
+          if (!isPro && country) {
+            conditions.push(`jurisdiction = $${paramIndex++}`);
+            params.push(country);
+          }
+
           const result = await query(
             `SELECT id, title, buyer_name, jurisdiction, sector,
                     opportunity_type, estimated_value, source_name, source_url,
                     source_hash, sha256_hash, commercial_why, published_at,
                     created_at
                FROM signals
-              WHERE created_at > $1
-                AND sector = ANY($2::text[])
-              ORDER BY created_at ASC
-              LIMIT 50`,
-            [lastSeen.toISOString(), STREAMED_SECTORS],
+               ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
+               AND created_at > $${paramIndex++}
+               ORDER BY created_at ASC
+               LIMIT 50`,
+            [...params, lastSeen.toISOString()],
           );
 
           if ((result.rowCount ?? 0) === 0) {
@@ -111,9 +160,10 @@ export async function GET(): Promise<NextResponse> {
 
           for (const row of result.rows) {
             lastSeen = new Date(row.created_at as string);
+            const sanitized = sanitizeSignalForUser(row, isPro);
             controller.enqueue(
               encoder.encode(
-                `data: ${JSON.stringify({ type: "signal", ...row })}\n\n`,
+                `data: ${JSON.stringify({ type: "signal", ...sanitized })}\n\n`,
               ),
             );
           }
@@ -134,6 +184,7 @@ export async function GET(): Promise<NextResponse> {
       if (self) clients.delete(self);
       info("sse_stream", {
         message: "SSE client disconnected",
+        userId,
         totalClients: clients.size,
       });
     },

@@ -7,8 +7,10 @@
  * signal event. Handles reconnection with exponential backoff and exposes
  * the connection status.
  *
- * Requires an authenticated Pro session (credentials: "include").
- * On 401/403 the hook stops retrying and reports a permanent error.
+ * Requires an authenticated session (credentials: "include").
+ * Works for both Free and Pro/Enterprise users. Free users receive
+ * redacted telemetry (commercial_why, estimated_value, etc. stripped
+ * server-side).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -77,91 +79,43 @@ export function useSignalStream(
     onSignalRef.current = onSignal;
   }, [onSignal]);
 
-  /**
-   * Probe the stream endpoint before opening EventSource.
-   * EventSource does not expose HTTP status codes, so we fetch first to
-   * detect permanent auth failures (401/403) and stop retrying.
-   */
-  async function probeStream(): Promise<boolean> {
-    try {
-      const res = await fetch("/api/signals/stream", {
-        method: "GET",
-        credentials: "include",
-        headers: {
-          Accept: "text/event-stream",
-        },
-        signal: AbortSignal.timeout(10_000),
-      });
-
-      // 401/403 are permanent — stop retrying.
-      if (res.status === 401 || res.status === 403) {
-        setIsConnected(false);
-        setError(
-          res.status === 403
-            ? "Real-time signals require a Pro subscription."
-            : "Not authenticated. Please sign in.",
-        );
-        return false;
-      }
-
-      // Any other non-2xx is treated as retryable.
-      if (!res.ok) {
-        setIsConnected(false);
-        setError(`Stream unavailable (${res.status}). Retrying…`);
-        return false;
-      }
-
-      return true;
-    } catch (err) {
-      setIsConnected(false);
-      setError(
-        err instanceof Error ? err.message : "Stream connection failed.",
-      );
-      return false;
-    }
-  }
-
   const connect = useCallback(() => {
     if (!enabled) return;
     if (esRef.current?.readyState === EventSource.OPEN) return;
 
-    void probeStream().then((ok) => {
-      if (!ok) return; // permanent failure, do not open EventSource
-
-      const es = new EventSource("/api/signals/stream", {
-        withCredentials: true,
-      });
-      esRef.current = es;
-
-      es.onopen = () => {
-        setIsConnected(true);
-        setError(null);
-      };
-
-      es.onmessage = (event: MessageEvent) => {
-        try {
-          const data = JSON.parse(event.data) as StreamEvent;
-          if (data.type === "connected") {
-            setClientCount(data.clients ?? null);
-          } else if (data.type === "signal") {
-            setLastSignal(data);
-            onSignalRef.current?.(data);
-          }
-        } catch {
-          // Ignore malformed messages (including heartbeat comments).
-        }
-      };
-
-      es.onerror = () => {
-        setIsConnected(false);
-        setError("SSE connection lost. Reconnecting…");
-        es.close();
-        esRef.current = null;
-
-        // Trigger reconnection via state change (avoids self-reference).
-        setReconnectKey((k) => k + 1);
-      };
+    const es = new EventSource("/api/signals/stream", {
+      withCredentials: true,
     });
+    esRef.current = es;
+
+    es.onopen = () => {
+      setIsConnected(true);
+      setError(null);
+    };
+
+    es.onmessage = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data) as StreamEvent;
+        if (data.type === "connected") {
+          setClientCount(data.clients ?? null);
+        } else if (data.type === "signal") {
+          setLastSignal(data);
+          onSignalRef.current?.(data);
+        }
+      } catch {
+        // Ignore malformed messages (including heartbeat comments).
+      }
+    };
+
+    es.onerror = () => {
+      setIsConnected(false);
+      setError("SSE connection lost. Reconnecting…");
+      es.close();
+      esRef.current = null;
+
+      // Trigger reconnection via state change (avoids self-reference).
+      setReconnectKey((k) => k + 1);
+    };
   }, [enabled]);
 
   // Reconnect with exponential backoff when reconnectKey changes.
