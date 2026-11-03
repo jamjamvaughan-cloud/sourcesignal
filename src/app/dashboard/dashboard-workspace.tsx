@@ -404,7 +404,7 @@ export function DashboardWorkspace({
               ? `LIVE · ${clientCount ?? 0} client${clientCount === 1 ? "" : "s"}`
               : error ?? "RECONNECTING…"}
           </span>
-          {!isConnected && error && (
+          {!isConnected && error && !error.includes("subscription") && !error.includes("authenticated") && (
             <button
               type="button"
               onClick={reconnect}
