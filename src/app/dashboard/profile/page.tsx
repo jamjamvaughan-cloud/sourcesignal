@@ -34,7 +34,7 @@ const SUBCATEGORY_MAP: Record<string, { id: string; label: string }[]> = {
     { id: "digital-transformation", label: "Digital Transformation" },
   ],
   energy: [
-    { id: "grid-modernisation", label: "Grid Modernisation" },
+    { id: "grid-modernization", label: "Grid Modernization" },
     { id: "renewable-energy-transition", label: "Renewable Energy Transition" },
     { id: "net-zero-compliance", label: "Net Zero Compliance" },
     { id: "utilities-infrastructure", label: "Utilities Infrastructure" },
@@ -176,7 +176,7 @@ export default function ProfilePage() {
           <Button
             onClick={handleOpenPortal}
             disabled={portalLoading}
-            className="text-[10px] font-inter font-semibold text-D4AF37 border border-D4AF37/30 hover:bg-D4AF37/5 hover:text-[#09090b] transition-all duration-200 ease-out px-4 py-2 rounded-none"
+            className="text-[10px] font-inter font-semibold text-D4AF37 border border-D4AF37/30 hover:bg-D4AF37/5 hover:text-[#09090b] transition-all duration-200 ease-out px-4 py-2 rounded-sm"
           >
             {portalLoading ? "Opening…" : "Manage Subscription"} <ArrowRight className="ml-1 h-3 w-3" />
           </Button>
@@ -194,7 +194,7 @@ export default function ProfilePage() {
         </div>
       )}
 
-      <div className="glass-card rounded-none border border-zinc-800 p-6 overflow-hidden">
+      <div className="glass-card rounded-3xl border border-slate-800 p-6 overflow-hidden">
         <div className="flex items-center justify-between mb-6">
           <div>
             <p className="text-[9px] font-inter font-semibold uppercase tracking-wider text-slate-500">
@@ -227,10 +227,10 @@ export default function ProfilePage() {
                       setCountryPreferences([...countryPreferences, c]);
                     }
                   }}
-                  className={`px-3 py-2 rounded-lg text-[10px] font-inter font-bold transition-all duration-200 border text-left ${
+                  className={`px-3 py-2 rounded-lg text-[10px] font-inter font-bold transition-all duration-200 border text-center ${
                     countryPreferences.includes(c)
                       ? "bg-D4AF37 text-[#09090b] border-D4AF37 shadow-lg shadow-D4AF37/30"
-                      : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:border-zinc-600 hover:text-zinc-200 font-mono px-3 py-1.5 text-xs rounded-none transition-colors"
+                      : "bg-white/5 text-slate-400 border-white/5 hover:bg-white/10 hover:text-white"
                   }`}
                 >
                   {c}
@@ -259,7 +259,7 @@ export default function ProfilePage() {
                   className={`px-3 py-2 rounded-lg text-[10px] font-inter font-bold transition-all duration-200 border text-left ${
                     industryPreferences.includes(s.id)
                       ? "bg-D4AF37 text-[#09090b] border-D4AF37 shadow-lg shadow-D4AF37/30"
-                      : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:border-zinc-600 hover:text-zinc-200 font-mono px-3 py-1.5 text-xs rounded-none transition-colors"
+                      : "bg-white/5 text-slate-400 border-white/5 hover:bg-white/10 hover:text-white"
                   }`}
                 >
                   {s.label}
@@ -295,7 +295,7 @@ export default function ProfilePage() {
                         className={`px-3 py-2 rounded-lg text-[9px] font-inter font-bold transition-all duration-200 border text-left ${
                           subCategoryPreferences.includes(sc.id)
                             ? "bg-D4AF37 text-[#09090b] border-D4AF37 shadow-lg shadow-D4AF37/30"
-                            : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:border-zinc-600 hover:text-zinc-200 font-mono px-3 py-1.5 text-xs rounded-none transition-colors"
+                            : "bg-white/5 text-slate-400 border-white/5 hover:bg-white/10 hover:text-white"
                         }`}
                       >
                         {sc.label}
@@ -320,7 +320,7 @@ export default function ProfilePage() {
         </form>
       </div>
 
-      <div className="mt-8 pt-6 border-t border-zinc-800">
+      <div className="mt-8 pt-6 border-t border-slate-800">
         <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-[10px] font-inter font-bold text-slate-500 uppercase tracking-wider">
@@ -335,7 +335,7 @@ export default function ProfilePage() {
           </span>
         </div>
 
-        <div className="glass-card p-4 rounded-none border border-white/5">
+        <div className="glass-card p-4 rounded-xl border border-white/5">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-inter font-bold text-white">
