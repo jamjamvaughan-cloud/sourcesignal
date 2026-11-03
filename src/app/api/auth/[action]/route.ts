@@ -172,10 +172,10 @@ export async function POST(
 
         const created = await withTransaction(async (client) => {
           const userResult = await client.query(
-            `INSERT INTO users (email, password_hash, subscription_tier, created_at, updated_at)
-             VALUES ($1, $2, 'free', NOW(), NOW())
+            `INSERT INTO users (email, password_hash, subscription_tier, country_preferences, created_at, updated_at)
+             VALUES ($1, $2, 'free', $3, NOW(), NOW())
              RETURNING id, email, subscription_tier`,
-            [normalizedEmail, passwordHash],
+            [normalizedEmail, passwordHash, [normaliseCountry(country)]],
           );
           const userId = userResult.rows[0].id as string;
 
