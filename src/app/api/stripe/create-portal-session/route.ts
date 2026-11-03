@@ -6,23 +6,32 @@
  *
  * Requires a valid session cookie. The user must have a Stripe customer ID
  * on their user record.
+ *
+ * Stripe is initialized lazily at request time so that `next build` on
+ * Vercel does not fail when STRIPE_SECRET_KEY is not set at build time.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { error, info } from "@/lib/logger";
-import Stripe from "stripe";
 
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+let stripeInstance: Stripe.Stripe | null = null;
 
-if (!STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY is not set.");
+function getStripe(): Stripe.Stripe {
+  if (!stripeInstance) {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) {
+      throw new Error("STRIPE_SECRET_KEY is not set.");
+    }
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const Stripe = require("stripe");
+    stripeInstance = new Stripe(key, {
+      apiVersion: "2026-10-28.endive",
+    });
+  }
+  return stripeInstance;
 }
-
-const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: "2026-10-28.endive",
-});
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const cookieHeader = request.headers.get("cookie");
@@ -32,7 +41,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    // Get the user's Stripe customer ID.
     const result = await query(
       `SELECT stripe_customer_id FROM users WHERE id = $1`,
       [user.id],
@@ -47,7 +55,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Create the billing portal session.
+    const stripe = getStripe();
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: stripeCustomerId,
       return_url: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://sourcesignal.site"}/dashboard/profile`,
