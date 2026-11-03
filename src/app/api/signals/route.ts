@@ -127,6 +127,7 @@ export async function GET(
   const type =
     searchParams.get("type") || searchParams.get("opportunity_type") || undefined;
   const search = searchParams.get("search") || undefined;
+  const region = searchParams.get("region") || undefined;
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
   const perPage = Math.min(
     MAX_PER_PAGE,
@@ -151,6 +152,12 @@ export async function GET(
     );
     params.push(`%${search}%`);
     paramIndex++;
+  }
+
+  // Users only see signals from their own signup country.
+  if (region) {
+    conditions.push(`jurisdiction = $${paramIndex++}`);
+    params.push(region);
   }
 
   // Free users: historical catalog from Jan 1, 2025 through yesterday
