@@ -119,8 +119,11 @@ export function formatSpend(
   return `${symbol}${Math.round(numeric)}`;
 }
 
-/** The primary card metric: stored score, confidence, then tier fallback. */
-export function signalScore(opportunity: SignalRecord): number {
+/** The primary card metric: stored score, confidence, then tier fallback.
+ * Returns null for Free-tier users (score redacted). */
+export function signalScore(opportunity: SignalRecord): number | null {
+  if (isCommercialWhyLocked(opportunity)) return null;
+
   const raw = opportunity.opportunity_score ?? opportunity.confidence;
   const numeric = Number(raw);
   if (raw != null && Number.isFinite(numeric)) {
@@ -154,10 +157,22 @@ function firstSentence(text: string, max = 190): string {
     : sentence;
 }
 
-/** Single-sentence "Commercial Why" box on every card. */
+/** True when the commercial_why field has been redacted for Free-tier users. */
+export function isCommercialWhyLocked(opportunity: SignalRecord): boolean {
+  return !opportunity.commercial_why?.trim();
+}
+
+/** Single-sentence "Commercial Why" box on every card.
+ * Free-tier users see a locked placeholder; Pro users see the real rationale. */
 export function commercialWhy(opportunity: SignalRecord): string {
   const stored = opportunity.commercial_why?.trim();
   if (stored) return firstSentence(stored);
+
+  // commercial_why is stripped server-side for Free users, so fall back to
+  // a locked placeholder rather than generating a rationale from other fields.
+  if (!stored) {
+    return "Commercial rationale locked — upgrade to Pro.";
+  }
 
   if (opportunity.summary?.trim()) {
     return firstSentence(opportunity.summary);

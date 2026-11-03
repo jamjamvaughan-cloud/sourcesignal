@@ -18,6 +18,7 @@ import {
   daysUntil,
   estimatedSpend,
   formatSpend,
+  isCommercialWhyLocked,
   opportunityTypeLabel,
   regionLabel,
   sectorLabel,
@@ -158,7 +159,10 @@ function SignalCard({
             Score
           </p>
           <p className="font-mono text-2xl font-bold leading-none tabular-nums text-white">
-            {score}
+            {score == null ? "—" : score}
+            {score == null && (
+              <span className="ml-1 text-[7px] text-zinc-500 uppercase">locked</span>
+            )}
           </p>
         </div>
       </div>
@@ -170,7 +174,7 @@ function SignalCard({
             Est. spend
           </p>
           <p className="mt-1 font-mono text-sm font-bold tabular-nums text-white">
-            {spend}
+            {spend === "UNDISCLOSED" ? "—" : spend}
           </p>
         </div>
         <div className="bg-[#050505] py-2 pl-3 text-right">
@@ -191,6 +195,11 @@ function SignalCard({
         <p className="mt-1 line-clamp-2 font-mono text-[10px] leading-relaxed text-zinc-400">
           {commercialWhy(opportunity)}
         </p>
+        {isCommercialWhyLocked(opportunity) && (
+          <span className="mt-1 inline-block border border-white/10 px-1 py-0.5 font-mono text-[7px] uppercase tracking-[0.1em] text-zinc-500">
+            Pro only
+          </span>
+        )}
       </div>
 
       {/* Capability badges */}
@@ -305,7 +314,9 @@ export function DashboardWorkspace({
           .some((value) => String(value).toLowerCase().includes(term));
       })
       .sort((a, b) => {
-        const scoreDelta = signalScore(b) - signalScore(a);
+        const scoreA = signalScore(a) ?? 0;
+        const scoreB = signalScore(b) ?? 0;
+        const scoreDelta = scoreB - scoreA;
         if (scoreDelta !== 0) return scoreDelta;
         const aClosing = daysUntil(a.closing_date) ?? Number.MAX_SAFE_INTEGER;
         const bClosing = daysUntil(b.closing_date) ?? Number.MAX_SAFE_INTEGER;

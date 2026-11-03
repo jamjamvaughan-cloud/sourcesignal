@@ -8,12 +8,20 @@
  * dates preserved), with optional sector / opportunity-type / keyword
  * filtering and pagination.
  *
+ * Tier gating:
+ *   - Free users: signals are embargoed by 24 hours (published_at must be
+ *     older than NOW() - INTERVAL '24 hours'), and Pro-only fields
+ *     (commercial_why, estimated_value, opportunity_score,
+ *     vulnerability_trigger, winner) are stripped.
+ *   - Pro/Enterprise users: full access, no delay, all fields.
+ *
  * Server-side only: queries PostgreSQL directly via the shared `pg` pool.
  * Requires an authenticated session (cookie forwarded from the caller).
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getUserPlanId } from "@/lib/auth";
+import { entitlementsFor } from "@/lib/entitlements";
 import { query } from "@/lib/db";
 
 /** Maps ingestion `sector` enum values to the controlled taxonomy ids used
@@ -30,6 +38,9 @@ const SECTOR_TO_TAXONOMY: Record<string, string> = {
 
 const DEFAULT_PER_PAGE = 50;
 const MAX_PER_PAGE = 100;
+
+/** Free users see signals no newer than 24 hours old. */
+const EMBARGO_HOURS = 24;
 
 interface SignalRow {
   id: string;
@@ -48,7 +59,10 @@ interface SignalRow {
   created_at: string | null;
 }
 
-function toSignalRecord(row: SignalRow) {
+/** Build a SignalRecord from a DB row, applying tier-based field redaction. */
+function toSignalRecord(row: SignalRow, entitlements: ReturnType<typeof entitlementsFor>) {
+  const isPro = entitlements.fullDetailsEnabled || entitlements.alertsEnabled;
+
   return {
     id: row.id,
     canonical_id: row.id,
@@ -58,10 +72,12 @@ function toSignalRecord(row: SignalRow) {
     region: row.jurisdiction ?? null,
     country: row.jurisdiction ?? null,
     location: null,
+    // estimated_value is Pro-only (fullDetailsEnabled).
     estimated_value:
-      typeof row.estimated_value === "number" ||
-      (typeof row.estimated_value === "string" &&
-        Number.isFinite(Number(row.estimated_value)))
+      entitlements.fullDetailsEnabled &&
+      (typeof row.estimated_value === "number" ||
+        (typeof row.estimated_value === "string" &&
+          Number.isFinite(Number(row.estimated_value))))
         ? Number(row.estimated_value)
         : null,
     currency: null,
@@ -79,11 +95,15 @@ function toSignalRecord(row: SignalRow) {
     is_demonstration: false,
     created_at: row.created_at ?? null,
     updated_at: null,
+    // vulnerability_trigger and winner are not columns on the signals table;
+    // they exist on the legacy opportunities table. Always null here.
     vulnerability_trigger: null,
     winner: null,
     opportunity_score: null,
     opportunity_type: row.opportunity_type ?? null,
-    commercial_why: row.commercial_why ?? null,
+    // commercial_why is a Pro-only field; Free users get null so the client
+    // can render it as "Locked / Blurred".
+    commercial_why: isPro ? (row.commercial_why ?? null) : null,
     supplier_capabilities: null,
     sub_category: null,
   };
@@ -97,6 +117,10 @@ export async function GET(
   if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
+
+  const planId = await getUserPlanId(user.id);
+  const entitlements = entitlementsFor(planId);
+  const isPro = entitlements.fullDetailsEnabled || entitlements.alertsEnabled;
 
   const { searchParams } = new URL(request.url);
   const sector = searchParams.get("sector") || undefined;
@@ -129,6 +153,14 @@ export async function GET(
     paramIndex++;
   }
 
+  // Free users: embargo signals by 24 hours (published_at must be older
+  // than NOW() - INTERVAL '24 hours').
+  if (!isPro) {
+    conditions.push(
+      `published_at <= NOW() - INTERVAL '${EMBARGO_HOURS} hours'`,
+    );
+  }
+
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const countResult = await query(
@@ -149,7 +181,9 @@ export async function GET(
     [...params, perPage, offset],
   );
 
-  const items = dataResult.rows.map((row) => toSignalRecord(row as SignalRow));
+  const items = dataResult.rows.map((row) =>
+    toSignalRecord(row as SignalRow, entitlements),
+  );
 
   return NextResponse.json({
     items,
@@ -157,6 +191,7 @@ export async function GET(
     perPage,
     total,
     hasMore: offset + items.length < total,
+    isPro,
   });
 }
 

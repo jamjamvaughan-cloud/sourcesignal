@@ -25,6 +25,7 @@ import {
   daysUntil,
   formatDate,
   formatSpend,
+  isCommercialWhyLocked,
   opportunityTypeLabel,
   regionLabel,
   sectorLabel,
@@ -126,7 +127,10 @@ export function SignalDrawer({ opportunity, open, onClose }: SignalDrawerProps) 
                   Signal score
                 </p>
                 <p className="mt-1.5 font-mono text-2xl font-bold tabular-nums text-white">
-                  {score}
+                  {score == null ? "—" : score}
+                  {score == null && (
+                    <span className="ml-1 text-[7px] text-zinc-500 uppercase">locked</span>
+                  )}
                 </p>
               </div>
               <div className="bg-[#050505] p-3">
@@ -134,7 +138,7 @@ export function SignalDrawer({ opportunity, open, onClose }: SignalDrawerProps) 
                   Est. spend
                 </p>
                 <p className="mt-1.5 font-mono text-lg font-bold tabular-nums text-white">
-                  {spend}
+                  {spend === "UNDISCLOSED" ? "—" : spend}
                 </p>
               </div>
               <div className="bg-[#050505] p-3">
@@ -289,6 +293,11 @@ export function SignalDrawer({ opportunity, open, onClose }: SignalDrawerProps) 
                 <p className="font-mono text-[8px] uppercase tracking-[0.28em] text-zinc-400">
                   Incumbent position
                 </p>
+                {isCommercialWhyLocked(opportunity) && (
+                  <span className="ml-auto border border-white/10 px-1 py-0.5 font-mono text-[7px] uppercase tracking-[0.1em] text-zinc-500">
+                    Pro only
+                  </span>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-px bg-white/10">
                 <div className="bg-[#050505] p-3">
@@ -296,7 +305,9 @@ export function SignalDrawer({ opportunity, open, onClose }: SignalDrawerProps) 
                     Current holder
                   </p>
                   <p className="mt-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-zinc-200">
-                    {opportunity.winner?.trim() || "Not disclosed"}
+                    {isCommercialWhyLocked(opportunity)
+                      ? "—"
+                      : opportunity.winner?.trim() || "Not disclosed"}
                   </p>
                 </div>
                 <div className="bg-[#050505] p-3">
@@ -304,7 +315,9 @@ export function SignalDrawer({ opportunity, open, onClose }: SignalDrawerProps) 
                     Displacement trigger
                   </p>
                   <p className="mt-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-zinc-200">
-                    {opportunity.vulnerability_trigger?.trim() || "Open window"}
+                    {isCommercialWhyLocked(opportunity)
+                      ? "—"
+                      : opportunity.vulnerability_trigger?.trim() || "Open window"}
                   </p>
                 </div>
               </div>
