@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { backendJson, getSessionContext } from "@/lib/backend";
+import { entitlementsFor } from "@/lib/entitlements";
 import { PRIMARY_SOURCES_MONITORED_LABEL } from "@/lib/ingestion/sources";
 import {
   DashboardWorkspace,
@@ -39,13 +40,16 @@ async function fetchSignals(
 }
 
 export default async function DashboardPage() {
-  const { user } = await getSessionContext();
+  const { user, planId } = await getSessionContext();
+  const entitlements = entitlementsFor(planId);
+  const isPro = entitlements.fullDetailsEnabled || entitlements.alertsEnabled;
   const signals = await fetchSignals(user?.country ?? null);
 
   return (
     <DashboardWorkspace
       opportunities={signals}
       primarySourcesLabel={PRIMARY_SOURCES_MONITORED_LABEL}
+      isPro={isPro}
     />
   );
 }

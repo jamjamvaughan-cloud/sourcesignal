@@ -32,6 +32,8 @@ interface DashboardWorkspaceProps {
   opportunities: DashboardOpportunity[];
   /** Quiet provenance line rendered directly below the search bar. */
   primarySourcesLabel: string;
+  /** When true, the SSE real-time stream is enabled (Pro/Enterprise only). */
+  isPro: boolean;
 }
 
 const SECTOR_CHIPS = [
@@ -221,6 +223,7 @@ function SignalCard({
 export function DashboardWorkspace({
   opportunities,
   primarySourcesLabel,
+  isPro,
 }: DashboardWorkspaceProps) {
   const [query, setQuery] = React.useState("");
   const [sector, setSector] = React.useState<string>("all");
@@ -235,52 +238,52 @@ export function DashboardWorkspace({
     [],
   );
 
-  // Real-time signal stream (SSE).
-  const { isConnected, clientCount, error, reconnect } =
-    useSignalStream(
-      (event) => {
-        const signalId = event.id;
-        if (!signalId) return;
-        setLiveSignals((prev) => {
-          // Avoid duplicates by source_hash or id.
-          if (prev.some((s) => s.id === signalId)) return prev;
-          const record: DashboardOpportunity = {
-            id: signalId,
-            canonical_id: signalId,
-            title: event.title ?? "Untitled signal",
-            buyer: event.buyer_name ?? null,
-            sector: event.sector ?? "TECH",
-            region: event.jurisdiction ?? "UK",
-            country: event.jurisdiction ?? null,
-            location: null,
-            estimated_value: event.estimated_value ?? null,
-            currency: null,
-            procurement_stage: null,
-            published_date: event.published_at ?? null,
-            closing_date: null,
-            confidence: null,
-            signal_tier: null,
-            source_url: event.source_url ?? null,
-            source_name: event.source_name ?? null,
-            source_captured_at: event.created_at ?? null,
-            source_hash: event.source_hash ?? null,
-            summary: null,
-            is_demonstration: false,
-            created_at: event.created_at ?? null,
-            updated_at: null,
-            vulnerability_trigger: null,
-            winner: null,
-            opportunity_score: null,
-            opportunity_type: event.opportunity_type ?? null,
-            commercial_why: event.commercial_why ?? null,
-            supplier_capabilities: null,
-            sub_category: null,
-          };
-          return [record, ...prev];
-        });
-      },
-      true,
-    );
+  // Real-time signal stream (SSE) — Pro/Enterprise only.
+  // Free users receive delayed signals via polling /api/signals (24h embargo).
+  const { isConnected, clientCount, error, reconnect } = useSignalStream(
+    (event) => {
+      const signalId = event.id;
+      if (!signalId) return;
+      setLiveSignals((prev) => {
+        // Avoid duplicates by source_hash or id.
+        if (prev.some((s) => s.id === signalId)) return prev;
+        const record: DashboardOpportunity = {
+          id: signalId,
+          canonical_id: signalId,
+          title: event.title ?? "Untitled signal",
+          buyer: event.buyer_name ?? null,
+          sector: event.sector ?? "TECH",
+          region: event.jurisdiction ?? "UK",
+          country: event.jurisdiction ?? null,
+          location: null,
+          estimated_value: event.estimated_value ?? null,
+          currency: null,
+          procurement_stage: null,
+          published_date: event.published_at ?? null,
+          closing_date: null,
+          confidence: null,
+          signal_tier: null,
+          source_url: event.source_url ?? null,
+          source_name: event.source_name ?? null,
+          source_captured_at: event.created_at ?? null,
+          source_hash: event.source_hash ?? null,
+          summary: null,
+          is_demonstration: false,
+          created_at: event.created_at ?? null,
+          updated_at: null,
+          vulnerability_trigger: null,
+          winner: null,
+          opportunity_score: null,
+          opportunity_type: event.opportunity_type ?? null,
+          commercial_why: event.commercial_why ?? null,
+          supplier_capabilities: null,
+          sub_category: null,
+        };
+        return [record, ...prev];
+      });
+    },
+    isPro,
+  );
 
   const allSignals = React.useMemo(
     () => [...liveSignals, ...opportunities],
