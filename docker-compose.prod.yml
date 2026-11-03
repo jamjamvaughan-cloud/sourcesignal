@@ -40,7 +40,7 @@ services:
     expose:
       - "5432"
     networks:
-      - backend
+      - sourcesignal_backend
     healthcheck:
       test:
         [
@@ -85,7 +85,7 @@ services:
     expose:
       - "6432"
     networks:
-      - backend
+      - sourcesignal_backend
     healthcheck:
       test:
         ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U \"$$DB_USER\""]
@@ -116,7 +116,7 @@ services:
     expose:
       - "6379"
     networks:
-      - backend
+      - sourcesignal_backend
     healthcheck:
       test:
         ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
@@ -154,8 +154,8 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - backend
-      - edge
+      - sourcesignal_backend
+      - sourcesignal_edge
     healthcheck:
       test:
         [
@@ -177,25 +177,19 @@ services:
   caddy:
     image: caddy:2-alpine
     container_name: sourcesignal-caddy
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
-      - "443:443/udp"
+    dns:
+      - 127.0.0.11
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
-    environment:
-      ACME_EMAIL: ${ACME_EMAIL:-}
-    depends_on:
-      api:
-        condition: service_started
     networks:
-      - edge
-    restart: unless-stopped
-    logging: *default-logging
-    security_opt:
-      - no-new-privileges:true
+      - sourcesignal_edge
+      - sourcesignal_backend
 
   # ---------------------------------------------------------------
   # Ingestion worker (optional)
@@ -222,7 +216,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - backend
+      - sourcesignal_backend
     restart: unless-stopped
     logging: *default-logging
     security_opt:
@@ -230,10 +224,10 @@ services:
 
 networks:
   # Database/cache/API traffic. No host ports are published on this network.
-  backend:
+  sourcesignal_backend:
     driver: bridge
   # Public-facing network used only by Caddy and the API.
-  edge:
+  sourcesignal_edge:
     driver: bridge
 
 volumes:
