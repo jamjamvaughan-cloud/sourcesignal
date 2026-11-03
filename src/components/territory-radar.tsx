@@ -9,13 +9,30 @@ export interface RadarPoint {
   sector?: string | null;
   label?: string | null;
   score?: number | null;
+  estimatedValue?: number | null;
+}
+
+interface ClusterPoint {
+  id: string;
+  region?: string | null;
+  sector?: string | null;
+  label?: string | null;
+  score?: number | null;
+  points: RadarPoint[];
+  center: { x: number; y: number };
 }
 
 interface TerritoryRadarProps {
   points: RadarPoint[];
   selectedId?: string | null;
   onSelect?: (id: string) => void;
+  onHover?: (id: string | null) => void;
+  hoveredId?: string | null;
   className?: string;
+  showHeatmap?: boolean;
+  zoom?: number;
+  bounds?: { north: number; south: number; east: number; west: number };
+  onBoundsChange?: (bounds: { north: number; south: number; east: number; west: number }) => void;
 }
 
 function hash(input: string): number {
@@ -41,11 +58,30 @@ function project(region: string | null | undefined, id: string) {
   };
 }
 
+function sectorColor(sector?: string | null): string {
+  switch (sector?.toUpperCase()) {
+    case "TECH": return "#10B981";
+    case "ENERGY": return "#F59E0B";
+    case "HEALTHCARE": return "#3B82F6";
+    case "PUBLIC_SECTOR": return "#A855F7";
+    case "CONSTRUCTION": return "#EF4444";
+    case "TRANSPORT": return "#F59E0B";
+    case "LOGISTICS": return "#10B981";
+    default: return "#10B981";
+  }
+}
+
 export function TerritoryRadar({
   points,
   selectedId,
   onSelect,
+  onHover,
+  hoveredId,
   className = "",
+  showHeatmap = false,
+  zoom = 4,
+  bounds,
+  onBoundsChange,
 }: TerritoryRadarProps) {
   const plotted = React.useMemo(
     () =>
@@ -56,23 +92,48 @@ export function TerritoryRadar({
     [points],
   );
 
-  const territories = React.useMemo(() => {
-    const counts = new Map<string, { label: string; count: number }>();
-    for (const point of points) {
-      const meta = regionMeta(point.region);
-      const key = meta.short;
-      const current = counts.get(key);
-      counts.set(key, {
-        label: meta.label,
-        count: (current?.count ?? 0) + 1,
-      });
+  const clusters = React.useMemo(() => {
+    if (zoom >= 8) {
+      return plotted.map((p) => ({
+        id: p.id,
+        region: p.region,
+        sector: p.sector,
+        label: p.label,
+        score: p.score,
+        points: [p],
+        center: { x: p.x, y: p.y },
+      }));
     }
-    return [...counts.values()]
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-  }, [points]);
 
-  const maxCount = Math.max(1, ...territories.map((item) => item.count));
+    const clusters = new Map<string, ClusterPoint>();
+
+    for (const point of plotted) {
+      const key = point.region || "EU";
+      const existing = clusters.get(key);
+      if (existing) {
+        existing.points.push(point);
+      } else {
+        clusters.set(key, {
+          id: `cluster-${key}`,
+          points: [point],
+          center: {
+            x: plotted.find((p) => p.region === key)?.x ?? 50,
+            y: plotted.find(p => p.region === key)?.y ?? 30,
+          },
+        });
+      }
+    }
+
+    return Array.from(clusters.entries()).map(([key, data]) => ({
+      id: `cluster-${key}`,
+      region: key,
+      sector: undefined,
+      label: undefined,
+      score: undefined,
+      points: data.points,
+      center: data.center,
+    }));
+  }, [plotted, zoom]);
 
   return (
     <section
@@ -85,21 +146,54 @@ export function TerritoryRadar({
             Territory Radar
           </p>
           <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.16em] text-zinc-300">
-            {points.length} active signal{points.length === 1 ? "" : "s"}
+            {plotted.length} active signal{plotted.length === 1 ? "" : "s"}
           </p>
         </div>
-        <span className="flex items-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.2em] text-emerald-400">
-          <span className="h-1.5 w-1.5 bg-emerald-400" />
-          Live
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onBoundsChange?.({ north: 90, south: -90, east: 180, west: -180 })}
+            className="px-2 py-1 border border-white/10 bg-zinc-900/50 text-[7px] font-mono uppercase tracking-[0.1em] text-zinc-500 hover:bg-white/5"
+          >
+            Reset View
+          </button>
+          <button
+            type="button"
+            className={`flex items-center gap-1 px-2 py-1 rounded text-[7px] font-mono uppercase tracking-[0.1em] transition-colors ${
+              showHeatmap
+                ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:bg-zinc-800 hover:text-zinc-200"
+            }`}
+          >
+            <span className={`h-3 w-3 rounded-full ${showHeatmap ? "bg-emerald-400" : "bg-zinc-500"}`} />
+            Heatmap
+          </button>
+          <span className="ml-2 text-[7px] font-mono text-zinc-500">
+            Zoom {zoom}
+          </span>
+        </div>
       </div>
 
-      <div className="relative overflow-hidden">
+      <div className="relative overflow-hidden aspect-[5:3] w-full">
         <svg
           viewBox="0 0 100 60"
-          className="h-auto w-full"
+          className="h-full w-full"
           role="img"
           aria-label="Global plot of active opportunity signals"
+          onWheel={(e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 1 : -1;
+            const newZoom = Math.min(Math.max(zoom + delta, 1), 12);
+            onBoundsChange?.({
+              north: Math.max(-90, 90 - (zoom - newZoom) * 10),
+              south: Math.min(90, -90 + (zoom - newZoom) * 10),
+              east: Math.min(180, 180 + (zoom - newZoom) * 15),
+              west: Math.max(-180, -180 - (zoom - newZoom) * 15),
+            });
+          }}
+          onWheelCapture={(e) => {
+            e.preventDefault();
+          }}
         >
           <rect width="100" height="60" fill="#050505" />
 
@@ -149,8 +243,44 @@ export function TerritoryRadar({
             </line>
           </g>
 
-          {plotted.map((point) => {
+          {zoom < 8 ? clusters.map((cluster) => (
+            <g
+              key={cluster.id}
+              transform={`translate(${cluster.center.x} ${cluster.center.y})`}
+              className="cursor-pointer"
+              onClick={() => onSelect?.(cluster.id)}
+              role="button"
+              tabIndex={0}
+              aria-label={`${cluster.points.length} signals in ${cluster.region}`}
+              onMouseEnter={() => onHover?.(cluster.id)}
+              onMouseLeave={() => onHover?.(null)}
+            >
+              <circle
+                r={Math.min(8, 4 + Math.log(cluster.points.length) * 2)}
+                fill="#0F172A"
+                stroke="#94A3B8"
+                strokeWidth="1"
+              />
+              <text
+                x="0"
+                y="4"
+                textAnchor="middle"
+                fill="#FFFFFF"
+                fontSize="8"
+                fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                fontWeight="bold"
+              >
+                {cluster.points.length}
+              </text>
+            </g>
+          )) : null}
+
+          {zoom >= 8 && plotted.map((point) => {
             const selected = selectedId === point.id;
+            const hovered = hoveredId === point.id;
+            const isHighValue = point.sector === "ENERGY" || point.sector === "CONSTRUCTION";
+            const color = sectorColor(point.sector);
+
             return (
               <g
                 key={point.id}
@@ -160,44 +290,88 @@ export function TerritoryRadar({
                 role="button"
                 tabIndex={0}
                 aria-label={point.label ?? "Opportunity signal"}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    onSelect?.(point.id);
-                  }
-                }}
+                onMouseEnter={() => onHover?.(point.id)}
+                onMouseLeave={() => onHover?.(null)}
               >
                 {selected && (
                   <circle
-                    r="2.4"
+                    r={3.5}
                     fill="none"
-                    stroke="#ffffff"
-                    strokeWidth="0.3"
-                    opacity="0.85"
-                  />
+                    stroke="#10B981"
+                    strokeWidth="0.5"
+                    opacity="0.9"
+                  >
+                    <animateTransform
+                      attributeName="r"
+                      from="3.5"
+                      to="5"
+                      dur="1s"
+                      repeatCount="indefinite"
+                    />
+                    <animateTransform
+                      attributeName="stroke-opacity"
+                      from="0.9"
+                      to="0.3"
+                      dur="1s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                )}
+                {isHighValue && !selected && (
+                  <circle
+                    r={2.5}
+                    fill="none"
+                    stroke="#D4AF37"
+                    strokeWidth="0.8"
+                    opacity="0.7"
+                  >
+                    <animateTransform
+                      attributeName="r"
+                      from="2.5"
+                      to="4"
+                      dur="2s"
+                      repeatCount="indefinite"
+                    />
+                    <animateTransform
+                      attributeName="stroke-opacity"
+                      from="0.7"
+                      to="0.3"
+                      dur="2s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
                 )}
                 <circle
-                  r={selected ? 1.15 : 0.75}
-                  fill={selected ? "#ffffff" : "#D4AF37"}
+                  r={1.2}
+                  fill={isHighValue ? "#D4AF37" : "#10B981"}
+                  stroke={selected ? "#10B981" : "none"}
+                  strokeWidth={selected ? 0.5 : 0}
                 />
+                {selected && (
+                  <circle
+                    r={0.5}
+                    fill="#FFFFFF"
+                  >
+                    <animateTransform
+                      attributeName="r"
+                      from="0.5"
+                      to="1.5"
+                      dur="1s"
+                      repeatCount="indefinite"
+                    />
+                    <animateTransform
+                      attributeName="stroke-opacity"
+                      from="1"
+                      to="0"
+                      dur="1s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                )}
                 <title>{point.label ?? "Opportunity signal"}</title>
               </g>
             );
           })}
-
-          {plotted.length === 0 && (
-            <text
-              x="50"
-              y="30.8"
-              textAnchor="middle"
-              fill="rgba(255,255,255,0.35)"
-              fontSize="2.4"
-              fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-              letterSpacing="0.5"
-            >
-              AWAITING SIGNALS
-            </text>
-          )}
         </svg>
 
         <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-between px-2 pt-1 font-mono text-[7px] uppercase tracking-[0.2em] text-zinc-700">
@@ -208,38 +382,32 @@ export function TerritoryRadar({
       </div>
 
       <div className="border-t border-white/10 px-4 py-3">
-        <p className="font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-500">
-          Active territories
-        </p>
-        {territories.length === 0 ? (
-          <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-600">
-            No mapped signals
-          </p>
-        ) : (
-          <ul className="mt-2 space-y-2">
-            {territories.map((territory) => (
-              <li key={territory.label}>
-                <div className="flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.14em]">
-                  <span className="text-zinc-400">{territory.label}</span>
-                  <span className="tabular-nums text-white">
-                    {territory.count}
-                  </span>
-                </div>
-                <div className="mt-1 h-[2px] w-full bg-white/5">
-                  <div
-                    className="h-full bg-[#D4AF37]"
-                    style={{
-                      width: `${Math.max(
-                        6,
-                        (territory.count / maxCount) * 100,
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-500">
+              Active territories
+            </p>
+            <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-400">
+              {plotted.length} signal{plotted.length === 1 ? "" : "s"} across {new Set(plotted.map((p) => p.region)).size} jurisdictions
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1 text-[9px] font-mono text-zinc-400">
+              <span className="h-3 w-3 rounded-full bg-zinc-500" />
+              Signals
+            </span>
+            <span className="flex items-center gap-1 text-[9px] font-mono text-zinc-400">
+              <span className="h-3 w-3 rounded-full bg-emerald-500" />
+              Standard
+            </span>
+            <span className="flex items-center gap-1 text-[9px] font-mono text-zinc-400">
+              <span className="h-2.5 w-2.5 rounded-full border border-amber-400/50 text-amber-400 text-[7px] leading-none">
+                ★
+              </span>
+              High Value
+            </span>
+          </div>
+        </div>
       </div>
     </section>
   );
