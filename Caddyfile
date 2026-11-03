@@ -6,10 +6,15 @@
 # The Vercel frontend proxies /api/* to this host. Stripe webhooks also hit
 # this host directly.
 
+{
+    admin off
+    persist_config off
+}
+
 api.sourcesignal.site {
 	encode zstd gzip
 
-	reverse_proxy sourcesignal-api:3000 {
+	reverse_proxy api:3000 {
 		# Do not buffer Server-Sent Events (/api/signals/stream).
 		flush_interval -1
 	}
