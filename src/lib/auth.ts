@@ -20,20 +20,32 @@ export const SESSION_TTL = 7 * 24 * 60 * 60;
 /**
  * Builds a `Set-Cookie` value for a session token. Adds `Secure` in
  * production so the cookie is never sent over plain HTTP.
+ *
+ * In production the cookie is scoped to the root domain
+ * (sourcesignal.site) so it is sent to both the frontend (sourcesignal.site)
+ * and the API subdomain (api.sourcesignal.site). SameSite=None is required
+ * for cross-site POST requests (signin/signup) from the frontend to the API.
  */
 export function buildSessionCookie(
   token: string,
   maxAge: number = SESSION_TTL,
 ): string {
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+  const domain =
+    process.env.NODE_ENV === "production" ? "; Domain=sourcesignal.site" : "";
+  const sameSite =
+    process.env.NODE_ENV === "production" ? "; SameSite=None" : "; SameSite=Lax";
+  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly${sameSite}; Max-Age=${maxAge}${secure}${domain}`;
 }
 
 /** Cookie value that clears the session cookie. */
 export function clearSessionCookie(): string {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${
-    process.env.NODE_ENV === "production" ? "; Secure" : ""
-  }`;
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  const domain =
+    process.env.NODE_ENV === "production" ? "; Domain=sourcesignal.site" : "";
+  const sameSite =
+    process.env.NODE_ENV === "production" ? "; SameSite=None" : "; SameSite=Lax";
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly${sameSite}; Max-Age=0${secure}${domain}`;
 }
 
 /** Extracts the session token from a raw `Cookie` header. */

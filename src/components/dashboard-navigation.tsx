@@ -84,7 +84,7 @@ export function DashboardNavigation({ user }: { user: { email?: string } }) {
     pathname === href || pathname.startsWith(href + "/");
 
   const handleSignOut = () => {
-    fetch(`${API_URL}/api/auth/signout`, { method: "POST" }).then(() => {
+    fetch(`${API_URL}/api/auth/signout`, { method: "POST", credentials: "include" }).then(() => {
       router.push("/");
     });
   };

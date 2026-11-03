@@ -177,6 +177,7 @@ export default function OpportunitiesPage() {
       try {
         const res = await fetch(`${API_URL}/api/opportunities?perPage=50`, {
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
         });
         if (res.ok) {
           const data = await res.json();

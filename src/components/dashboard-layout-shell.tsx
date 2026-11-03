@@ -48,7 +48,7 @@ export function Sidebar({
   const router = useRouter();
 
   const handleSignOut = () => {
-    fetch(`${API_URL}/api/auth/signout`, { method: "POST" }).then(() => {
+    fetch(`${API_URL}/api/auth/signout`, { method: "POST", credentials: "include" }).then(() => {
       router.push("/");
     });
   };

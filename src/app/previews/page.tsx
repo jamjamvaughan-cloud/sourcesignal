@@ -16,6 +16,7 @@ export default function PreviewsPage() {
       try {
         const res = await fetch(`${API_URL}/api/opportunities`, {
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
         });
         if (res.ok) {
           const data = await res.json();
