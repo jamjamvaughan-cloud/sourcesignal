@@ -231,18 +231,21 @@ services:
       - sourcesignal_backend
 
   # ---------------------------------------------------------------
-  # Ingestion worker (optional)
+  # Legacy PocketBase ingestion worker (ARCHIVED)
   #
-  # NOTE: the worker still writes to PocketBase (see
-  # worker/src/pipeline/upsert.ts), while the web app reads PostgreSQL.
-  # Until that migration lands, start this profile only if you are also
-  # running PocketBase. The web app will not see the ingested records.
+  # DEPRECATED: replaced by the `ingestion` profile service
+  # (sourcesignal-ingestion) which reads the native PostgreSQL `signals`
+  # table. The legacy worker still writes to PocketBase and references
+  # `ingestion_runs` columns that no longer match the current schema.
   #
-  #   docker compose -f docker-compose.prod.yml --profile ingestion up -d worker
+  # Source archived to ./worker.deprecated. Do not start this profile;
+  # use the `ingestion` profile instead:
+  #
+  #   docker compose -f docker-compose.prod.yml --profile ingestion up -d --build ingestion
   # ---------------------------------------------------------------
   worker:
     build:
-      context: ./worker
+      context: ./worker.deprecated
       dockerfile: Dockerfile
     container_name: sourcesignal-worker
     profiles:

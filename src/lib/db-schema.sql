@@ -562,6 +562,13 @@ ALTER TABLE signals ADD COLUMN IF NOT EXISTS audit_snapshot_html TEXT;
 ALTER TABLE signals ADD COLUMN IF NOT EXISTS sha256_hash VARCHAR(64);
 CREATE INDEX IF NOT EXISTS idx_signals_sha256_hash ON signals(sha256_hash);
 
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'signals_sha256_hash_key') THEN
+        ALTER TABLE signals ADD CONSTRAINT signals_sha256_hash_key UNIQUE (sha256_hash);
+    END IF;
+END $$;
+
 -- 22. Outbound Webhook Destinations
 -- User-scoped webhook endpoints that receive signed signals in real time.
 CREATE TABLE IF NOT EXISTS webhooks (
