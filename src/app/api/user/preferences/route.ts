@@ -1,0 +1,129 @@
+/**
+ * POST /api/user/preferences
+ *
+ * Saves the authenticated user's country, industry, and sub-category
+ * preferences. These are used to filter the opportunity feed and
+ * intelligence modules to the user's target markets.
+ *
+ * Body:
+ *   countryPreferences: string[]   (e.g. ["UK", "US"])
+ *   industryPreferences: string[]  (e.g. ["technology-infrastructure", "energy"])
+ *   subCategoryPreferences: string[] (e.g. ["cloud-migration", "grid-modernization"])
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import { query } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
+import { error, info } from "@/lib/logger";
+import {
+  isValidSector,
+  isValidSubCategory,
+  TAXONOMY,
+} from "@/lib/taxonomy";
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const cookieHeader = request.headers.get("cookie");
+  const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
+  let body: {
+    countryPreferences?: unknown;
+    industryPreferences?: unknown;
+    subCategoryPreferences?: unknown;
+  };
+  try {
+    body = (await request.json()) as {
+      countryPreferences?: unknown;
+      industryPreferences?: unknown;
+      subCategoryPreferences?: unknown;
+    };
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON body." },
+      { status: 400 },
+    );
+  }
+
+  const countryPreferences: string[] = Array.isArray(body.countryPreferences)
+    ? body.countryPreferences.filter((c): c is string => typeof c === "string")
+    : [];
+
+  const industryPreferences: string[] = Array.isArray(body.industryPreferences)
+    ? body.industryPreferences.filter(
+        (c): c is string => typeof c === "string",
+      )
+    : [];
+
+  const subCategoryPreferences: string[] = Array.isArray(
+    body.subCategoryPreferences,
+  )
+    ? body.subCategoryPreferences.filter(
+        (c): c is string => typeof c === "string",
+      )
+    : [];
+
+  // Validate sectors against the controlled taxonomy.
+  for (const sectorId of industryPreferences) {
+    if (!isValidSector(sectorId)) {
+      return NextResponse.json(
+        { error: `Invalid sector: ${sectorId}` },
+        { status: 400 },
+      );
+    }
+  }
+
+  // Validate sub-categories against the controlled taxonomy.
+  for (const subCatId of subCategoryPreferences) {
+    const sector = TAXONOMY.find((s) =>
+      s.subCategories.some((sc) => sc.id === subCatId),
+    );
+    if (!sector || !isValidSubCategory(sector.id, subCatId)) {
+      return NextResponse.json(
+        { error: `Invalid sub-category: ${subCatId}` },
+        { status: 400 },
+      );
+    }
+  }
+
+  try {
+    await query(
+      `UPDATE users
+        SET country_preferences = $1,
+            industry_preferences = $2,
+            subcategory_preferences = $3,
+            updated_at = NOW()
+        WHERE id = $4`,
+      [
+        countryPreferences,
+        industryPreferences,
+        subCategoryPreferences,
+        user.id,
+      ],
+    );
+
+    info("user_preferences_updated", {
+      userId: user.id,
+      countryPreferences,
+      industryPreferences,
+      subCategoryPreferences,
+    });
+
+    return NextResponse.json({
+      success: true,
+      countryPreferences,
+      industryPreferences,
+      subCategoryPreferences,
+    });
+  } catch (err: unknown) {
+    error("user_preferences_update_failed", {
+      userId: user.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: "Failed to save preferences." },
+      { status: 500 },
+    );
+  }
+}

@@ -20,6 +20,11 @@ import {
   extractSectorText,
 } from "@/lib/cpv-sector-mapping";
 import { resolveBuyer } from "@/lib/normalise-buyer";
+import {
+  mapSubCategoryToTaxonomy,
+  mapOpportunityType,
+  passesHardFilter,
+} from "@/lib/taxonomy";
 
 /**
  * Valid region codes per country/jurisdiction. Used to enforce country-based
@@ -130,6 +135,31 @@ export function normaliseRecord(
     return null;
   }
 
+  // Map sub-category from payload or derived from sector
+  const rawSubCategory =
+    (payload.subCategory as string) ||
+    (payload.sub_category as string) ||
+    (payload.subCat as string) ||
+    undefined;
+  const resolvedSubCategory = rawSubCategory
+    ? mapSubCategoryToTaxonomy(resolvedSector, rawSubCategory)
+    : undefined;
+
+  // Map opportunity type from procurement stage / title / summary
+  const rawOpportunityType =
+    (payload.opportunityType as string) ||
+    (payload.opportunity_type as string) ||
+    (payload.procurementStage as string) ||
+    undefined;
+  const resolvedOpportunityType = rawOpportunityType
+    ? mapOpportunityType(rawOpportunityType)
+    : undefined;
+
+  // Hard filter: reject records that don't map to controlled taxonomy
+  if (!passesHardFilter(resolvedSector, resolvedSubCategory, resolvedOpportunityType, buyer)) {
+    return null;
+  }
+
   return {
     canonicalId: "", // set during canonicalisation
     title: String(title),
@@ -137,6 +167,8 @@ export function normaliseRecord(
     buyer,
     buyerCanonicalId,
     sector: resolvedSector,
+    subCategory: resolvedSubCategory,
+    opportunityType: resolvedOpportunityType,
     region: normalisedRegion,
     location,
     latitude,

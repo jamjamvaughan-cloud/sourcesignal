@@ -9,7 +9,7 @@
  *   4. Canonicalise (generate canonical ID + source hash)
  *   5. Deduplicate (skip already-processed canonical IDs)
  *   6. Extract structured fields (NVIDIA API or rule-based)
- *   7. Upsert into PocketBase idempotently
+ *   7. Upsert into PostgreSQL idempotently (via PgBouncer)
  *   8. Record run status, counts, retries, and failures
  *
  * Usage:
@@ -18,7 +18,7 @@
  *   npm start            # run as a long-running process (15-min polling)
  */
 
-import PocketBase from "pocketbase";
+import { Pool } from "pg";
 import { ADAPTERS, getEnabledAdapters } from "./pipeline/registry";
 import { normaliseRecord } from "./pipeline/normalise";
 import {
@@ -56,58 +56,42 @@ process.on("SIGINT", handleShutdown);
 process.on("SIGTERM", handleShutdown);
 
 /**
- * Returns an authenticated PocketBase admin client.
- * Reads credentials from server-only environment variables.
- * Uses typed auth pattern consistent with src/lib/pb-server.ts.
+ * PostgreSQL pool for the worker. Created lazily on first use.
  */
-function getAdminPb(): Promise<PocketBase | null> {
-  const email = process.env.POCKETBASE_ADMIN_EMAIL;
-  const password = process.env.POCKETBASE_ADMIN_PASSWORD;
-  const url = process.env.NEXT_PUBLIC_POCKETBASE_URL;
+let poolInstance: Pool | null = null;
 
-  if (!email || !password || !url) {
-    log("warn", "Missing PocketBase admin credentials.", {
-      required: ["POCKETBASE_ADMIN_EMAIL", "POCKETBASE_ADMIN_PASSWORD", "NEXT_PUBLIC_POCKETBASE_URL"],
+function getPool(): Pool {
+  if (!poolInstance) {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      throw new Error(
+        "DATABASE_URL is not set. The worker requires a PostgreSQL connection string.",
+      );
+    }
+    poolInstance = new Pool({
+      connectionString,
+      max: 10,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 10_000,
+      keepAlive: true,
     });
-    return Promise.resolve(null);
   }
-
-  try {
-    const pb = new PocketBase(url);
-    return pb
-      .collection("_superusers")
-      .authWithPassword(email, password)
-      .then(() => pb)
-      .catch((err: unknown) => {
-        log("error", "Failed to authenticate as PocketBase admin.", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return null;
-      });
-  } catch (err) {
-    log("error", "Failed to authenticate as PocketBase admin.", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return Promise.resolve(null);
-  }
+  return poolInstance;
 }
 
 /**
  * Run a single ingestion cycle across all enabled adapters.
  */
 async function runIngestionCycle(): Promise<IngestionResult[]> {
-  const pb = await getAdminPb();
-  if (!pb) {
-    return [];
-  }
+  const pool = getPool();
 
   // Fetch existing canonical IDs for deduplication.
   const existingCanonicalIds = new Set<string>();
   try {
-    const existing = await pb.collection("opportunities").getFullList({
-      fields: "canonical_id",
-    });
-    for (const item of existing) {
+    const existing = await pool.query(
+      `SELECT canonical_id FROM opportunities`,
+    );
+    for (const item of existing.rows) {
       if (item.canonical_id) {
         existingCanonicalIds.add(item.canonical_id);
       }
@@ -165,7 +149,7 @@ async function runIngestionCycle(): Promise<IngestionResult[]> {
           // Step 5: Deduplicate by canonical ID.
           if (isDuplicate(canonicalised, existingCanonicalIds)) {
             const existingHash = await getExistingSourceHash(
-              pb,
+              pool,
               canonicalised.canonicalId,
             );
             if (!hasSourceChanged(canonicalised, existingHash)) {
@@ -177,8 +161,8 @@ async function runIngestionCycle(): Promise<IngestionResult[]> {
           // Step 6: Extract structured fields.
           const extraction = await extractFields(canonicalised);
 
-          // Step 7: Upsert into PocketBase.
-          const upsertResult = await upsertOpportunity(pb, {
+          // Step 7: Upsert into PostgreSQL.
+          const upsertResult = await upsertOpportunity({
             ...canonicalised,
             confidence: extraction.confidence,
           });
@@ -239,19 +223,19 @@ async function runIngestionCycle(): Promise<IngestionResult[]> {
       finishedAt,
     });
 
-    // Record run in PocketBase ingestion_runs collection.
+    // Record run in PostgreSQL ingestion_runs table.
     try {
-      await pb.collection("ingestion_runs").create({
-        started_at: startedAt,
-        finished_at: finishedAt,
-        status,
-        discovered: stats.discovered,
-        inserted: stats.inserted,
-        updated_count: stats.updated,
-        skipped: stats.skipped,
-        failed: stats.failed,
-        source: adapter.name,
-      });
+      await pool.query(
+        `INSERT INTO ingestion_runs (
+          started_at, finished_at, status, discovered, inserted,
+          updated_count, skipped, failed, source
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          startedAt, finishedAt, status, stats.discovered,
+          stats.inserted, stats.updated, stats.skipped, stats.failed,
+          adapter.name,
+        ],
+      );
     } catch (err) {
       log("warn", "Could not record ingestion run.", {
         source: adapter.name,
@@ -267,16 +251,15 @@ async function runIngestionCycle(): Promise<IngestionResult[]> {
  * Get existing source hash for a canonical ID (for change detection).
  */
 async function getExistingSourceHash(
-  pb: PocketBase,
+  pool: Pool,
   canonicalId: string,
 ): Promise<string | undefined> {
   try {
-    const record = await pb
-      .collection("opportunities")
-      .getFirstListItem(`canonical_id = "${canonicalId}"`, {
-        fields: "source_hash",
-      });
-    return record.source_hash as string | undefined;
+    const result = await pool.query(
+      `SELECT source_hash FROM opportunities WHERE canonical_id = $1`,
+      [canonicalId],
+    );
+    return result.rows[0]?.source_hash as string | undefined;
   } catch {
     return undefined;
   }

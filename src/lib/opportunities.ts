@@ -14,6 +14,7 @@ import {
 } from "@/lib/entitlements";
 import { isValidSectorId, isValidRegion } from "@/lib/config";
 import { createHash } from "crypto";
+import { isValidSector } from "@/lib/taxonomy";
 
 export interface OpportunityFilters {
   sector?: string;
@@ -24,6 +25,10 @@ export interface OpportunityFilters {
   page?: number;
   perPage?: number;
   sort?: string;
+  // User preferences for filtering
+  userCountryPreferences?: string[];
+  userIndustryPreferences?: string[];
+  userSubCategoryPreferences?: string[];
 }
 
 export interface OpportunityListResult {
@@ -75,6 +80,38 @@ export async function listOpportunities(
   // records are clearly marked and excluded from default browsing.
   filterParts.push("is_demonstration = false");
 
+  // Apply user preference filters if provided.
+  // These narrow results to the user's saved countries and industries.
+  if (
+    filters.userCountryPreferences &&
+    filters.userCountryPreferences.length > 0
+  ) {
+    const validCountries = filters.userCountryPreferences.filter((c) =>
+      ["UK", "US", "CA", "IE", "AU", "EU"].includes(c),
+    );
+    if (validCountries.length > 0) {
+      const countryFilter = validCountries
+        .map((c) => `country = '${escapeSqlFilter(c)}'`)
+        .join(" OR ");
+      filterParts.push(`(${countryFilter})`);
+    }
+  }
+
+  if (
+    filters.userIndustryPreferences &&
+    filters.userIndustryPreferences.length > 0
+  ) {
+    const validIndustries = filters.userIndustryPreferences.filter((s) =>
+      isValidSector(s),
+    );
+    if (validIndustries.length > 0) {
+      const industryFilter = validIndustries
+        .map((s) => `sector = '${escapeSqlFilter(s)}'`)
+        .join(" OR ");
+      filterParts.push(`(${industryFilter})`);
+    }
+  }
+
   if (filters.sector && isValidSectorId(filters.sector)) {
     filterParts.push(`sector = '${escapeSqlFilter(filters.sector)}'`);
   }
@@ -121,7 +158,9 @@ export async function listOpportunities(
     `SELECT id, canonical_id, title, sector, region, location, buyer,
             estimated_value, currency, procurement_stage, published_date,
             closing_date, confidence, signal_tier, source_url, summary,
-            is_demonstration, created_at, updated_at, source_hash
+            is_demonstration, created_at, updated_at, source_hash,
+            sub_category, opportunity_type, opportunity_score, commercial_why,
+            supplier_capabilities
      FROM opportunities
      ${filter ? `WHERE ${filter}` : ""}
      ORDER BY ${orderBy}

@@ -1,5 +1,15 @@
 "use client";
 
+/**
+ * Corporate Explorer — Opportunity Search Page.
+ *
+ * Rightmove-inspired search command header with:
+ *   - Country, Industry, Sub-Category dropdown filters
+ *   • Classic Filter vs AI Intent Mode toggle
+ *   • Mode tabs: Pre-RFP Tenders, Incumbent Fatigue, Expansion Triggers
+ *   • Watched Accounts & Saved Signal Queries shortcuts
+ */
+
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,9 +20,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChevronRight } from "lucide-react";
+import {
+  ChevronRight,
+  Search,
+} from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { InspectorDrawer, type InspectorData } from "@/components/inspector-drawer";
+
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -23,6 +37,7 @@ export interface Opportunity {
   buyer?: string | null;
   sector: string;
   region: string;
+  country?: string | null;
   location?: string | null;
   estimated_value?: number | null;
   currency?: string | null;
@@ -40,142 +55,58 @@ export interface Opportunity {
   created_at?: string | null;
   updated_at?: string | null;
   vulnerability_trigger?: string | null;
+  opportunity_type?: string | null;
+  opportunity_score?: number | null;
+  commercial_why?: string | null;
+  supplier_capabilities?: string[] | null;
+  sub_category?: string | null;
 }
 
-const DEMO_INSPECTORS: Record<string, InspectorData> = {
-  "ss-aws-2026-001": {
-    id: "demo-aws",
-    canonical_id: "SS-AWS-2026-001",
-    title: "AWS Cloud Migration Displacement",
-    sector: "Technology",
-    region: "US",
-    country: "US",
-    buyer: "Amazon Web Services",
-    predicted_value: 4200000,
-    currency: "USD",
-    confidence: 94,
-    signal_tier: "MEGAPROCUREMENT",
-    source_url: "https://example.com/aws-rfp",
-    source_name: "AWS Public Sector RFP Portal",
-    source_captured_at: "2026-10-15T09:30:00Z",
-    summary:
-      "Large enterprise seeking to displace AWS with a multi-cloud strategy due to egress fee surges and vendor lock-in concerns.",
-    displacement_probability: 78,
-    primary_driver: "300% egress fee increase over 18 months",
-    displacement_reasons: [
-      "300% egress fee increase over 18 months",
-      "Vendor lock-in with no exit strategy",
-      "Annual audit pressure and compliance overhead",
-    ],
-    tech_stack: [
-      { name: "AWS S3", category: "Storage", maturity: "legacy" },
-      { name: "AWS EC2", category: "Compute", maturity: "legacy" },
-      { name: "Kubernetes", category: "Orchestration", maturity: "modern" },
-      { name: "Terraform", category: "IaC", maturity: "modern" },
-    ],
-    intent_signals: [
-      { name: "Egress Fee Surge", value: "+300%", severity: "high" },
-      { name: "Vendor Lock-in Risk", value: "Critical", severity: "high" },
-      { name: "Renewal Window", value: "180 days", severity: "medium" },
-    ],
-  },
-  "ss-sf-2026-014": {
-    id: "demo-salesforce",
-    canonical_id: "SS-SF-2026-014",
-    title: "Salesforce CRM Replacement",
-    sector: "Technology",
-    region: "ENG",
-    country: "UK",
-    buyer: "Salesforce",
-    predicted_value: 1850000,
-    currency: "GBP",
-    confidence: 87,
-    signal_tier: "HIGH_CAP",
-    source_url: "https://example.com/salesforce-rfp",
-    source_name: "UK Government Digital Marketplace",
-    source_captured_at: "2026-10-14T14:20:00Z",
-    summary:
-      "Mid-market retail group evaluating modular CRM alternatives due to per-seat pricing fatigue and underutilized features.",
-    displacement_probability: 65,
-    primary_driver: "Per-seat pricing fatigue at 200+ users",
-    displacement_reasons: [
-      "Per-seat pricing fatigue at 200+ users",
-      "40% of licenses underutilized",
-      "Complex renewal negotiations",
-    ],
-    tech_stack: [
-      { name: "Salesforce Sales Cloud", category: "CRM", maturity: "legacy" },
-      { name: "Marketing Cloud", category: "Marketing", maturity: "legacy" },
-      { name: "Slack", category: "Collaboration", maturity: "modern" },
-    ],
-    intent_signals: [
-      { name: "License Underutilization", value: "40%", severity: "medium" },
-      { name: "Pricing Fatigue", value: "High", severity: "high" },
-      { name: "Renewal Window", value: "90 days", severity: "medium" },
-    ],
-  },
-  "ss-ora-2026-033": {
-    id: "demo-oracle",
-    canonical_id: "SS-ORA-2026-033",
-    title: "Oracle Database Migration",
-    sector: "Finance",
-    region: "EU",
-    country: "DE",
-    buyer: "Oracle Corporation",
-    predicted_value: 5600000,
-    currency: "EUR",
-    confidence: 91,
-    signal_tier: "MEGAPROCUREMENT",
-    source_url: "https://example.com/oracle-rfp",
-    source_name: "German Federal Procurement Portal",
-    source_captured_at: "2026-10-13T11:00:00Z",
-    summary:
-      "Financial services group planning Oracle database displacement due to annual audit pressure and rising licensing costs.",
-    displacement_probability: 72,
-    primary_driver: "Annual audit pressure and rising licensing costs",
-    displacement_reasons: [
-      "Annual audit pressure and compliance costs",
-      "Rising annual licensing fees",
-      "Legacy skill shortage in-house",
-    ],
-    tech_stack: [
-      { name: "Oracle Database 19c", category: "Database", maturity: "legacy" },
-      { name: "Oracle Exadata", category: "Hardware", maturity: "legacy" },
-      { name: "PostgreSQL", category: "Database", maturity: "modern" },
-    ],
-    intent_signals: [
-      { name: "Audit Pressure", value: "High", severity: "high" },
-      { name: "Licensing Cost Increase", value: "+45%", severity: "high" },
-      { name: "Renewal Window", value: "210 days", severity: "low" },
-    ],
-  },
-};
+const MODES = [
+  { id: "prerfp", label: "Pre-RFP Tenders", description: "Early-stage procurement before formal publication" },
+  { id: "incumbent", label: "Incumbent Fatigue", description: "Buyers showing churn signals and renewal risk" },
+  { id: "expansion", label: "Expansion Triggers", description: "CAPEX projects and facility growth signals" },
+] as const;
+
+type ModeId = (typeof MODES)[number]["id"];
+
+const NOW = new Date("2026-11-03").getTime();
 
 const SECTOR_STYLES: Record<string, string> = {
-  Infrastructure: "bg-white/5 text-slate-300 border border-white/10",
-  Energy: "bg-white/5 text-D4AF37 border border-D4AF37/20",
-  Defence: "bg-white/5 text-D4AF37 border border-D4AF37/20",
-  Technology: "bg-white/5 text-D4AF37 border border-D4AF37/20",
-  Construction: "bg-white/5 text-D4AF37 border border-D4AF37/20",
-  Logistics: "bg-white/5 text-D4AF37 border border-D4AF37/20",
-  Manufacturing: "bg-white/5 text-D4AF37 border border-D4AF37/20",
-  Healthcare: "bg-white/5 text-D4AF37 border border-D4AF37/20",
-  Finance: "bg-white/5 text-D4AF37 border border-D4AF37/20",
+  "technology-infrastructure": "bg-white/5 text-D4AF37 border border-D4AF37/20",
+  energy: "bg-white/5 text-D4AF37 border border-D4AF37/20",
+  construction: "bg-white/5 text-D4AF37 border border-D4AF37/20",
+  "healthcare-infrastructure": "bg-white/5 text-D4AF37 border border-D4AF37/20",
+  transport: "bg-white/5 text-D4AF37 border border-D4AF37/20",
+  "logistics-and-distribution": "bg-white/5 text-D4AF37 border border-D4AF37/20",
+  "public-sector-services": "bg-white/5 text-D4AF37 border border-D4AF37/20",
   default: "bg-white/5 text-slate-300 border border-white/10",
 };
-
-const NOW = new Date("2026-11-01").getTime();
 
 export default function OpportunitiesPage() {
   const [opportunities, setOpportunities] = React.useState<Opportunity[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [selected, setSelected] = React.useState<InspectorData | null>(null);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [mode, setMode] = React.useState<ModeId>("prerfp");
+  const [filterMode, setFilterMode] = React.useState<"classic" | "ai">("classic");
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [countryFilter, setCountryFilter] = React.useState<string>("");
+  const [industryFilter, setIndustryFilter] = React.useState<string>("");
 
   React.useEffect(() => {
     async function fetchOpportunities() {
       try {
-        const res = await fetch(`${API_URL}/api/opportunities?perPage=50`, {
+        const params = new URLSearchParams({
+          page: "1",
+          perPage: "50",
+          sort: "-created_at",
+        });
+        if (countryFilter) params.set("country", countryFilter);
+        if (industryFilter) params.set("sector", industryFilter);
+        if (searchQuery) params.set("q", searchQuery);
+
+        const res = await fetch(`${API_URL}/api/opportunities?${params}`, {
           headers: { "Content-Type": "application/json" },
           credentials: "include",
         });
@@ -190,12 +121,16 @@ export default function OpportunitiesPage() {
       }
     }
     fetchOpportunities();
-  }, []);
+  }, [countryFilter, industryFilter, searchQuery]);
 
   const handleOpenInspector = (id: string) => {
-    const inspector = DEMO_INSPECTORS[id] ?? null;
-    setSelected(inspector);
+    setSelected(null);
     setDrawerOpen(true);
+    // Fetch the specific opportunity
+    const opp = opportunities.find((o) => o.canonical_id === id || o.id === id);
+    if (opp) {
+      setSelected(normalizeInspector(opp));
+    }
   };
 
   if (loading) {
@@ -208,7 +143,19 @@ export default function OpportunitiesPage() {
     );
   }
 
-  if (opportunities.length === 0) {
+  const filtered = opportunities.filter((opp) => {
+    if (countryFilter && opp.region !== countryFilter && opp.country !== countryFilter) return false;
+    if (industryFilter && opp.sector !== industryFilter) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      if (!opp.title?.toLowerCase().includes(q) &&
+          !opp.buyer?.toLowerCase().includes(q) &&
+          !opp.summary?.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
     return (
       <EmptyState
         title="No opportunities found"
@@ -219,233 +166,233 @@ export default function OpportunitiesPage() {
 
   return (
     <>
+      {/* Search Command Header */}
       <div className="space-y-6 section-enter max-w-full min-w-0">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-2">
           <div>
             <h1 className="headline mb-0.5">Corporate Explorer</h1>
             <p className="text-[10px] font-inter font-mono tracking-wider text-slate-500 uppercase">
-              High-density commercial tender intelligence.
+              Commercial displacement intelligence
             </p>
           </div>
           <div className="flex items-end gap-2">
             <Button
               variant="ghost"
               className="text-[10px] font-inter font-semibold text-slate-400 hover:text-white hover:bg-white/5 transition-all duration-200 ease-out px-4 py-2 rounded-xl"
-              onClick={() => setOpportunities([])}
+              onClick={() => {
+                setCountryFilter("");
+                setIndustryFilter("");
+                setSearchQuery("");
+              }}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="mr-1 h-4 w-4"
-              >
-                <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                <path d="M2 17l10 5 10-5" />
-                <path d="M2 12l10 5 10-5" />
-              </svg>
               Reset
             </Button>
           </div>
         </div>
 
-        <div className="glass-panel p-3 flex flex-wrap items-center gap-3 max-w-full min-w-0">
-          <div className="flex items-center gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-4 w-4 text-slate-500"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <path d="M21 21l-4.3-4.3" />
-            </svg>
-            <Input
-              placeholder="Search title, buyer, summary…"
-              className="h-10 text-xs px-3 min-w-[200px] w-auto bg-transparent border-transparent text-white placeholder-slate-500 focus:border-D4AF37 focus:ring-0"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Select defaultValue="all" onValueChange={() => {}}>
-              <SelectTrigger className="h-10 text-xs px-3 min-w-[140px] w-auto bg-transparent border-transparent text-white focus:border-D4AF37 focus:ring-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="p-2 bg-[#09090b] border border-white/10">
-                <SelectItem value="all">All Sectors</SelectItem>
-                {[
-                  { id: "technology", name: "Technology" },
-                  { id: "finance", name: "Finance" },
-                  { id: "healthcare", name: "Healthcare" },
-                  { id: "manufacturing", name: "Manufacturing" },
-                  { id: "logistics", name: "Logistics" },
-                  { id: "construction", name: "Construction" },
-                  { id: "energy", name: "Energy" },
-                  { id: "defence", name: "Defence" },
-                  { id: "infrastructure", name: "Infrastructure" },
-                ].map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-2">
-            <Select defaultValue="all" onValueChange={() => {}}>
-              <SelectTrigger className="h-10 text-xs px-3 min-w-[120px] w-auto bg-transparent border-transparent text-white focus:border-D4AF37 focus:ring-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="p-2 bg-[#09090b] border border-white/10">
-                <SelectItem value="all">All Regions</SelectItem>
-                {["US", "CA", "ENG", "SCT", "WLS", "NIR", "IE", "AU", "EU"].map(
-                  (r) => (
-                    <SelectItem key={r} value={r}>
-                      {r}
+        {/* Search bar */}
+        <div className="glass-card p-4 rounded-xl border border-white/5">
+          <div className="flex flex-col lg:flex-row gap-3">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <Input
+                  placeholder="Search title, buyer, sector…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-10 text-xs pl-10 pr-3 w-full bg-transparent border-transparent text-white placeholder-slate-500 focus:border-D4AF37 focus:ring-0"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Select
+                value={countryFilter || "all"}
+                onValueChange={(v) => setCountryFilter(v === null || v === "all" ? "" : v)}
+              >
+                <SelectTrigger className="h-10 text-xs px-3 min-w-[150px] w-auto bg-transparent border-transparent text-white focus:border-D4AF37 focus:ring-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="p-2 bg-[#09090b] border border-white/10">
+                  <SelectItem value="all">Country</SelectItem>
+                  {["UK", "US", "CA", "IE", "AU", "EU"].map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
                     </SelectItem>
-                  ),
-                )}
-              </SelectContent>
-            </Select>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={industryFilter || "all"}
+                onValueChange={(v) => setIndustryFilter(v === null || v === "all" ? "" : v)}
+              >
+                <SelectTrigger className="h-10 text-xs px-3 min-w-[200px] w-auto bg-transparent border-transparent text-white focus:border-D4AF37 focus:ring-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="p-2 bg-[#09090b] border border-white/10">
+                  <SelectItem value="all">Industry</SelectItem>
+                  {[
+                    { id: "technology-infrastructure", label: "Technology Infrastructure" },
+                    { id: "energy", label: "Energy" },
+                    { id: "construction", label: "Construction" },
+                    { id: "healthcare-infrastructure", label: "Healthcare Infrastructure" },
+                    { id: "transport", label: "Transport" },
+                    { id: "logistics-and-distribution", label: "Logistics & Distribution" },
+                    { id: "public-sector-services", label: "Public Sector Services" },
+                  ].map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Select defaultValue="all" onValueChange={() => {}}>
-              <SelectTrigger className="h-10 text-xs px-3 min-w-[120px] w-auto bg-transparent border-transparent text-white focus:border-D4AF37 focus:ring-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="p-2 bg-[#09090b] border border-white/10">
-                <SelectItem value="all">All Stages</SelectItem>
-                <SelectItem value="published">Published</SelectItem>
-                <SelectItem value="evaluation">Evaluation</SelectItem>
-                <SelectItem value="planned">Planned</SelectItem>
-                <SelectItem value="awarded">Awarded</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
+          {/* Mode toggle */}
+          <div className="flex items-end gap-2">
+            <div className="flex items-center gap-1 text-[9px] font-inter font-mono text-slate-500">
+              Classic Filter
+              <button
+                onClick={() => setFilterMode("classic")}
+                className={`ml-1 h-5 w-5 rounded text-[9px] transition-all ${filterMode === "classic" ? "bg-D4AF37 text-[#09090b]" : "bg-white/5 text-slate-400 hover:bg-white/10"}`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="3"/></svg>
+              </button>
+              <button
+                onClick={() => setFilterMode("ai")}
+                className={`ml-1 h-5 w-5 rounded text-[9px] transition-all ${filterMode === "ai" ? "bg-D4AF37 text-[#09090b]" : "bg-white/5 text-slate-400 hover:bg-white/10"}`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/></svg>
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="glass-card overflow-hidden section-enter max-w-full min-w-0">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-full text-left text-sm">
-              <thead className="bg-[#0F0F11]">
-                <tr className="border-b border-white/5 sticky top-0 z-10">
-                  <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 w-10">Status</th>
-                  <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500">Tender Title &amp; Buyer</th>
-                  <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500">Sector</th>
-                  <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500">Region</th>
-                  <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 text-right">CapEx Value</th>
-                  <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 text-right">Closes In</th>
-                  <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 text-right">Match %</th>
-                  <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 text-right w-16">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {opportunities.map((opp) => {
-                  const inspectorId = opp.canonical_id?.toLowerCase().replace(/[^a-z0-9]/g, "-") || opp.id;
-                  const sectorStyle =
-                    SECTOR_STYLES[opp.sector] || SECTOR_STYLES.default;
-                  const value = formatCapEx(
-                    opp.estimated_value,
-                    opp.currency,
-                  );
-                  const closingDays = opp.closing_date
-                    ? Math.ceil(
-                        (new Date(opp.closing_date).getTime() - NOW) /
-                          86400000,
-                      )
-                    : null;
-                  const matchPct =
-                    opp.confidence ??
-                    (opp.signal_tier === "MEGAPROCUREMENT"
-                      ? 94
-                      : opp.signal_tier === "HIGH_CAP"
-                        ? 89
-                        : 82);
+        {/* Mode tabs */}
+        <div className="flex gap-1">
+          {MODES.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setMode(m.id)}
+              className={`px-3 py-2 text-[9px] font-inter font-bold rounded-xl transition-all ${
+                mode === m.id
+                  ? "bg-D4AF37 text-[#09090b] shadow-lg shadow-D4AF37/30"
+                  : "bg-white/5 text-slate-400 border border-white/5 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-                  return (
-                    <tr
-                      key={opp.id}
-                      onClick={() => handleOpenInspector(inspectorId)}
-                      className="table-row cursor-pointer group hover:bg-white/5 transition-all duration-200 ease-out"
-                    >
-                      <td className="px-4 py-3">
-                        <span className={`flex h-6 w-6 items-center justify-center text-[10px] font-bold ${opp.signal_tier === "MEGAPROCUREMENT" || opp.signal_tier === "HIGH_CAP" ? "bg-D4AF37 text-[#09090b]" : opp.signal_tier === "STANDARD_COMMERCIAL" ? "bg-white/10 text-white" : "bg-white/5 text-slate-400"}`}>
-                          {opp.canonical_id.slice(-2).toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-0.5">
-                          <p className="text-sm font-inter font-semibold text-[#E5E5EA] group-hover:text-D4AF37/80 transition-colors">
-                            {opp.title}
+      {/* Results table */}
+      <div className="glass-card overflow-hidden section-enter max-w-full min-w-0">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-full text-left text-sm">
+            <thead className="bg-[#0F0F11]">
+              <tr className="border-b border-white/5 sticky top-0 z-10">
+                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 w-10">ID</th>
+                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500">Tender Title &amp; Buyer</th>
+                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500">Sector</th>
+                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500">Region</th>
+                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 text-right">CapEx Value</th>
+                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 text-right">Closes In</th>
+                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 text-right">Match %</th>
+                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 text-right w-16">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {filtered.map((opp) => {
+                const sectorStyle =
+                  SECTOR_STYLES[opp.sector] || SECTOR_STYLES.default;
+                const value = formatCapEx(
+                  opp.estimated_value,
+                  opp.currency,
+                );
+                const closingDays = opp.closing_date
+                  ? Math.ceil(
+                      (new Date(opp.closing_date).getTime() - NOW) /
+                        86400000,
+                    )
+                  : null;
+                const matchPct =
+                  opp.confidence ??
+                  (opp.signal_tier === "MEGAPROCUREMENT"
+                    ? 94
+                    : opp.signal_tier === "HIGH_CAP"
+                      ? 89
+                      : 82);
+
+                return (
+                  <tr
+                    key={opp.id}
+                    onClick={() => handleOpenInspector(opp.canonical_id)}
+                    className="table-row cursor-pointer group hover:bg-white/5 transition-all duration-200 ease-out"
+                  >
+                    <td className="px-4 py-3">
+                      <span className={`flex h-6 w-6 items-center justify-center text-[10px] font-bold ${opp.signal_tier === "MEGAPROCUREMENT" || opp.signal_tier === "HIGH_CAP" ? "bg-D4AF37 text-[#09090b]" : opp.signal_tier === "STANDARD_COMMERCIAL" ? "bg-white/10 text-white" : "bg-white/5 text-slate-400"}`}>
+                        {opp.canonical_id.slice(-2).toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <p className="text-sm font-inter font-semibold text-[#E5E5EA] group-hover:text-D4AF37/80 transition-colors">
+                          {opp.title}
+                        </p>
+                        {opp.buyer && (
+                          <p className="text-[10px] font-inter font-mono text-slate-400 tabular-nums">
+                            {opp.buyer}
                           </p>
-                          {opp.buyer && (
-                            <p className="text-[10px] font-inter font-mono text-slate-400 tabular-nums">
-                              {opp.buyer}
-                            </p>
-                          )}
-                          <p className="text-[10px] font-inter font-mono text-slate-500 tabular-nums">
-                            {opp.created_at
-                              ? new Date(opp.created_at).toLocaleDateString(
-                                  "en-GB",
-                                )
-                              : "—"}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 text-[10px] font-inter font-mono ${sectorStyle}`}>
-                          {opp.sector}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-sm font-inter font-mono text-slate-400 tabular-nums">
-                          {opp.region}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        {opp.vulnerability_trigger ? (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-inter font-bold ${getVulnerabilityStyle(opp.vulnerability_trigger)}`}>
-                            {opp.vulnerability_trigger}
-                          </span>
-                        ) : (
-                          <span className="text-[9px] text-slate-500">—</span>
                         )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-sm font-inter font-bold text-[#E5E5EA] font-mono tabular-nums">
-                          {value}
+                        <p className="text-[10px] font-inter font-mono text-slate-500 tabular-nums">
+                          {opp.created_at
+                            ? new Date(opp.created_at).toLocaleDateString("en-GB")
+                            : "—"}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 text-[10px] font-inter font-mono ${sectorStyle}`}>
+                        {opp.sector}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-inter font-mono text-slate-400 tabular-nums">
+                        {opp.region}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {opp.vulnerability_trigger ? (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-inter font-bold ${getVulnerabilityStyle(opp.vulnerability_trigger)}`}>
+                          {opp.vulnerability_trigger}
                         </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-xs font-inter font-mono text-D4AF37 tabular-nums">
-                          {closingDays !== null ? `${closingDays}d left` : "—"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-xs font-inter font-mono font-bold text-[#E5E5EA] tabular-nums">
-                          {matchPct}%
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <ChevronRight className="h-4 w-4 text-slate-600 group-hover:text-D4AF37 transition-colors" />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      ) : (
+                        <span className="text-[9px] text-slate-500">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-sm font-inter font-bold text-[#E5E5EA] font-mono tabular-nums">
+                        {value}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-xs font-inter font-mono text-D4AF37 tabular-nums">
+                        {closingDays !== null ? `${closingDays}d left` : "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-xs font-inter font-mono font-bold text-[#E5E5EA] tabular-nums">
+                        {matchPct}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <ChevronRight className="h-4 w-4 text-slate-600 group-hover:text-D4AF37 transition-colors" />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -507,5 +454,35 @@ function normalize(opp: Record<string, unknown>): Opportunity {
     created_at: opp.created_at as string | null ?? null,
     updated_at: opp.updated_at as string | null ?? null,
     vulnerability_trigger: opp.vulnerability_trigger as string | null ?? null,
+    opportunity_type: opp.opportunity_type as string | null ?? null,
+    opportunity_score: opp.opportunity_score as number | null ?? null,
+    commercial_why: opp.commercial_why as string | null ?? null,
+    supplier_capabilities: (opp.supplier_capabilities as string[] | null) ?? null,
+    sub_category: opp.sub_category as string | null ?? null,
+  };
+}
+
+function normalizeInspector(opp: Opportunity): InspectorData {
+  return {
+    id: opp.id,
+    canonical_id: opp.canonical_id,
+    title: opp.title,
+    sector: opp.sector,
+    region: opp.region,
+    country: opp.country ?? "",
+    buyer: opp.buyer ?? "",
+    predicted_value: opp.estimated_value ?? 0,
+    currency: opp.currency ?? "GBP",
+    confidence: opp.confidence ?? 50,
+    signal_tier: opp.signal_tier ?? "STANDARD_COMMERCIAL",
+    source_url: opp.source_url ?? "",
+    source_name: opp.source_name ?? "",
+    source_captured_at: opp.source_captured_at ?? "",
+    summary: opp.summary ?? "",
+    displacement_probability: (opp.opportunity_score ?? 50),
+    primary_driver: opp.commercial_why ?? "",
+    displacement_reasons: [],
+    tech_stack: [],
+    intent_signals: [],
   };
 }

@@ -11,7 +11,7 @@
     "health": "tsx src/health.ts"
   },
   "dependencies": {
-    "pocketbase": "^0.28.1"
+    "pg": "^8.15.0"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",

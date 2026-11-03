@@ -30,8 +30,12 @@ export interface NormalisedOpportunity {
   readonly buyerCanonicalId?: string;
   /** Sector (must match a supported sector id). */
   readonly sector: string;
+  /** Sub-category (must match a supported sub-category id under sector). */
+  readonly subCategory?: string;
   /** Region code (must match a supported region code). */
   readonly region: string;
+  /** Opportunity type (PROJECT, PROCUREMENT, etc.). */
+  readonly opportunityType?: string;
   /** Location (city, country, etc.). */
   readonly location?: string;
   /** Latitude (optional, for map). */

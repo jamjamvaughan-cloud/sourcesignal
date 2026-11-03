@@ -216,6 +216,10 @@ CREATE INDEX IF NOT EXISTS idx_cache_entries_expires_at ON cache_entries(expires
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS organisation_id UUID REFERENCES organisations(id) ON DELETE SET NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS country_preferences TEXT[] DEFAULT ARRAY['UK'];
+ALTER TABLE users ADD COLUMN IF NOT EXISTS industry_preferences TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subcategory_preferences TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE users ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN DEFAULT FALSE;
 
 ALTER TABLE organisations ADD COLUMN IF NOT EXISTS slug VARCHAR(255);
 ALTER TABLE organisations ADD COLUMN IF NOT EXISTS plan VARCHAR(50) DEFAULT 'free' NOT NULL;
@@ -256,6 +260,11 @@ ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS is_demonstration BOOLEAN DEFA
 ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS winner VARCHAR(255);
 ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS raw_payload JSONB DEFAULT '{}';
 ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
+ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS opportunity_type TEXT DEFAULT 'PROCUREMENT';
+ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS opportunity_score INT DEFAULT 50;
+ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS commercial_why TEXT;
+ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS supplier_capabilities TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS sub_category TEXT;
 UPDATE opportunities SET canonical_id = id::text WHERE canonical_id IS NULL;
 ALTER TABLE opportunities ALTER COLUMN canonical_id SET NOT NULL;
 ALTER TABLE opportunities ALTER COLUMN country SET DEFAULT 'UK';

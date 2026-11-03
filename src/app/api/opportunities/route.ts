@@ -6,6 +6,9 @@
  *
  * The caller's plan/entitlements are derived from their verified session and
  * organisation membership — never from client-supplied parameters.
+ *
+ * When user country/industry preferences are set, results are filtered to
+ * match those preferences before entitlement sanitization.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -21,6 +24,9 @@ async function getEntitlements(
   entitlements: import("@/lib/entitlements").Entitlements;
   plan: PlanId;
   userId: string;
+  countryPreferences: string[];
+  industryPreferences: string[];
+  subCategoryPreferences: string[];
 }> {
   const cookieHeader = request.headers.get("cookie");
   const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
@@ -29,8 +35,29 @@ async function getEntitlements(
   }
   const planId = await getUserPlanId(user.id);
   const entitlements = entitlementsFor(planId);
-  return { entitlements, plan: planId, userId: user.id };
+
+  // Fetch user preferences from the database.
+  const result = await query(
+    `SELECT country_preferences, industry_preferences, subcategory_preferences
+      FROM users WHERE id = $1`,
+    [user.id],
+  );
+  const row = result.rows[0];
+  const countryPreferences: string[] = row?.country_preferences ?? [];
+  const industryPreferences: string[] = row?.industry_preferences ?? [];
+  const subCategoryPreferences: string[] = row?.subcategory_preferences ?? [];
+
+  return {
+    entitlements,
+    plan: planId,
+    userId: user.id,
+    countryPreferences,
+    industryPreferences,
+    subCategoryPreferences,
+  };
 }
+
+import { query } from "@/lib/db";
 
 export async function GET(
   request: NextRequest,
@@ -42,8 +69,12 @@ export async function GET(
   if (rateLimitResult) return rateLimitResult;
 
   let entitlements: import("@/lib/entitlements").Entitlements;
+  let countryPreferences: string[] = [];
+  let industryPreferences: string[] = [];
+  let subCategoryPreferences: string[] = [];
   try {
-    ({ entitlements } = await getEntitlements(request));
+    ({ entitlements, countryPreferences, industryPreferences, subCategoryPreferences } =
+      await getEntitlements(request));
   } catch {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
@@ -60,6 +91,16 @@ export async function GET(
       ? Number(searchParams.get("perPage"))
       : undefined,
     sort: searchParams.get("sort") || undefined,
+    // User preferences for filtering
+    userCountryPreferences: countryPreferences.length > 0
+      ? countryPreferences
+      : undefined,
+    userIndustryPreferences: industryPreferences.length > 0
+      ? industryPreferences
+      : undefined,
+    userSubCategoryPreferences: subCategoryPreferences.length > 0
+      ? subCategoryPreferences
+      : undefined,
   };
 
   try {
