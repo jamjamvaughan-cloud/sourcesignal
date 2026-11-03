@@ -2,16 +2,14 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 export default function SignupPage() {
-  const router = useRouter();
   const [formData, setFormData] = useState({
     email: "",
     password: "",
-    country: "United Kingdom",
+    country: "UK",
     terms: false,
   });
   const [error, setError] = useState<string | null>(null);
@@ -32,11 +30,13 @@ export default function SignupPage() {
       const response = await fetch(`${API_URL}/api/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           email: formData.email,
           password: formData.password,
           passwordConfirm: formData.password,
           country: formData.country,
+          acceptTerms: formData.terms,
         }),
       });
 
@@ -48,7 +48,9 @@ export default function SignupPage() {
         return;
       }
 
-      router.push("/dashboard");
+      // Full navigation so the cross-domain session cookie is definitely
+      // applied before the dashboard request is made.
+      window.location.replace(data.redirectTo || "/dashboard");
     } catch (err: unknown) {
       setError(
         err instanceof Error ? err.message : "Account creation failed.",
@@ -140,12 +142,12 @@ export default function SignupPage() {
                   setFormData({ ...formData, country: e.target.value })}
                 className="w-full rounded-none border border-white/20 bg-zinc-950 p-3 font-mono text-sm text-white transition-colors focus:border-white focus:outline-none"
               >
-                <option value="United Kingdom">United Kingdom</option>
-                <option value="United States">United States</option>
-                <option value="Canada">Canada</option>
-                <option value="Ireland">Ireland</option>
-                <option value="Australia">Australia</option>
-                <option value="European Union">European Union</option>
+                <option value="UK">United Kingdom</option>
+                <option value="US">United States</option>
+                <option value="CA">Canada</option>
+                <option value="IE">Ireland</option>
+                <option value="AU">Australia</option>
+                <option value="EU">European Union</option>
               </select>
             </div>
 

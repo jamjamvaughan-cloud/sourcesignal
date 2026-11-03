@@ -660,3 +660,13 @@
   font-weight: 600;
   color: #E5E5EA;
 }
+
+/* Hide scrollbars on compact horizontal nav / filter rails. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

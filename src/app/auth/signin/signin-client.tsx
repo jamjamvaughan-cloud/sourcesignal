@@ -40,7 +40,7 @@ export default function SignInPageClient() {
         return;
       }
 
-      router.push("/dashboard");
+      window.location.replace(data.redirectTo || "/dashboard");
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Sign in failed.";

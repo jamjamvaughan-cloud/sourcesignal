@@ -55,6 +55,7 @@ const TYPE_CHIPS = [
 ] as const;
 
 type ViewMode = "list" | "radar";
+type MobilePanel = "cards" | "map";
 
 function closingLabel(closingDate?: string | null): string {
   const days = daysUntil(closingDate);
@@ -183,6 +184,7 @@ export function DashboardWorkspace({
   const [sector, setSector] = React.useState<string>("all");
   const [opportunityType, setOpportunityType] = React.useState<string>("all");
   const [view, setView] = React.useState<ViewMode>("list");
+  const [mobilePanel, setMobilePanel] = React.useState<MobilePanel>("cards");
   const [selected, setSelected] = React.useState<DashboardOpportunity | null>(
     null,
   );
@@ -273,7 +275,7 @@ export function DashboardWorkspace({
             type="button"
             onClick={() => setView("list")}
             aria-pressed={view === "list"}
-            className={`flex h-9 flex-1 items-center justify-center gap-2 px-4 font-mono text-[9px] uppercase tracking-[0.18em] transition-colors lg:flex-none ${
+            className={`flex h-9 flex-1 items-center justify-center gap-2 whitespace-nowrap px-4 font-mono text-[9px] uppercase tracking-[0.18em] transition-colors lg:flex-none ${
               view === "list"
                 ? "bg-white text-black"
                 : "bg-transparent text-zinc-400 hover:text-white"
@@ -286,7 +288,7 @@ export function DashboardWorkspace({
             type="button"
             onClick={() => setView("radar")}
             aria-pressed={view === "radar"}
-            className={`flex h-9 flex-1 items-center justify-center gap-2 border-l border-white/10 px-4 font-mono text-[9px] uppercase tracking-[0.18em] transition-colors lg:flex-none ${
+            className={`flex h-9 flex-1 items-center justify-center gap-2 whitespace-nowrap border-l border-white/10 px-4 font-mono text-[9px] uppercase tracking-[0.18em] transition-colors lg:flex-none ${
               view === "radar"
                 ? "bg-white text-black"
                 : "bg-transparent text-zinc-400 hover:text-white"
@@ -321,7 +323,7 @@ export function DashboardWorkspace({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 border-t border-white/10 px-4 py-3">
+        <div className="no-scrollbar flex items-center gap-2 overflow-x-auto border-t border-white/10 px-4 py-3">
           {SECTOR_CHIPS.map((chip) => {
             const active = sector === chip.id;
             return (
@@ -330,7 +332,7 @@ export function DashboardWorkspace({
                 type="button"
                 onClick={() => setSector(chip.id)}
                 aria-pressed={active}
-                className={`border px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.16em] transition-colors ${
+                className={`flex-shrink-0 whitespace-nowrap border px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.16em] transition-colors ${
                   active
                     ? "border-white bg-white text-black"
                     : "border-white/10 text-zinc-500 hover:border-white/35 hover:text-white"
@@ -342,7 +344,7 @@ export function DashboardWorkspace({
           })}
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto border-t border-white/10 px-4 py-2.5">
+        <div className="no-scrollbar flex items-center gap-2 overflow-x-auto border-t border-white/10 px-4 py-2.5">
           <span className="flex-shrink-0 font-mono text-[8px] uppercase tracking-[0.24em] text-zinc-600">
             Type
           </span>
@@ -384,45 +386,84 @@ export function DashboardWorkspace({
           </button>
         </section>
       ) : view === "list" ? (
-        <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          {/* 60% signal stream */}
-          <section aria-label="Priority signal feed">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-500">
-                Priority stream
-              </p>
-              <span className="flex items-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.18em] text-emerald-400">
-                <span className="h-1.5 w-1.5 bg-emerald-400" />
-                Live
-              </span>
-            </div>
-            <div className="space-y-3">
-              {filtered.map((opportunity) => (
-                <SignalCard
-                  key={opportunity.id}
-                  opportunity={opportunity}
-                  active={selected?.id === opportunity.id}
-                  onOpen={() => setSelected(opportunity)}
-                />
-              ))}
-            </div>
-          </section>
+        <div className="space-y-4">
+          {/* Mobile/tablet panel toggle — keeps both panels usable below lg */}
+          <div className="flex border border-white/10 lg:hidden">
+            <button
+              type="button"
+              onClick={() => setMobilePanel("cards")}
+              aria-pressed={mobilePanel === "cards"}
+              className={`flex h-9 flex-1 items-center justify-center gap-2 whitespace-nowrap font-mono text-[9px] uppercase tracking-[0.18em] transition-colors ${
+                mobilePanel === "cards"
+                  ? "bg-white text-black"
+                  : "bg-transparent text-zinc-400 hover:text-white"
+              }`}
+            >
+              <List className="h-3.5 w-3.5" />
+              Show Cards
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobilePanel("map")}
+              aria-pressed={mobilePanel === "map"}
+              className={`flex h-9 flex-1 items-center justify-center gap-2 whitespace-nowrap border-l border-white/10 font-mono text-[9px] uppercase tracking-[0.18em] transition-colors ${
+                mobilePanel === "map"
+                  ? "bg-white text-black"
+                  : "bg-transparent text-zinc-400 hover:text-white"
+              }`}
+            >
+              <Radar className="h-3.5 w-3.5" />
+              Show Map
+            </button>
+          </div>
 
-          {/* 40% sticky territory radar */}
-          <aside className="lg:sticky lg:top-20">
-            <TerritoryRadar
-              points={radarPoints}
-              selectedId={selected?.id}
-              onSelect={openById}
-            />
-            <div className="mt-3 flex items-start gap-2 border border-white/10 px-3 py-2.5">
-              <MapPin className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-zinc-600" />
-              <p className="font-mono text-[8px] uppercase leading-relaxed tracking-[0.14em] text-zinc-600">
-                Plot reflects captured primary-source evidence. Select any
-                marker to open its provenance record.
-              </p>
-            </div>
-          </aside>
+          <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            {/* 60% signal stream */}
+            <section
+              aria-label="Priority signal feed"
+              className={`${mobilePanel === "cards" ? "block" : "hidden"} lg:block`}
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <p className="font-mono text-[8px] uppercase tracking-[0.3em] text-zinc-500">
+                  Priority stream
+                </p>
+                <span className="flex items-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.18em] text-emerald-400">
+                  <span className="h-1.5 w-1.5 bg-emerald-400" />
+                  Live
+                </span>
+              </div>
+              <div className="space-y-3">
+                {filtered.map((opportunity) => (
+                  <SignalCard
+                    key={opportunity.id}
+                    opportunity={opportunity}
+                    active={selected?.id === opportunity.id}
+                    onOpen={() => setSelected(opportunity)}
+                  />
+                ))}
+              </div>
+            </section>
+
+            {/* 40% sticky territory radar */}
+            <aside
+              className={`${
+                mobilePanel === "map" ? "block" : "hidden"
+              } lg:sticky lg:top-20 lg:block`}
+            >
+              <TerritoryRadar
+                points={radarPoints}
+                selectedId={selected?.id}
+                onSelect={openById}
+              />
+              <div className="mt-3 flex items-start gap-2 border border-white/10 px-3 py-2.5">
+                <MapPin className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-zinc-600" />
+                <p className="font-mono text-[8px] uppercase leading-relaxed tracking-[0.14em] text-zinc-600">
+                  Plot reflects captured primary-source evidence. Select any
+                  marker to open its provenance record.
+                </p>
+              </div>
+            </aside>
+          </div>
         </div>
       ) : (
         <div className="space-y-6">

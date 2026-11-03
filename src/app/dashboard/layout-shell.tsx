@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { SignOutButton } from "@/components/sign-out-button";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Feed" },
@@ -33,7 +33,7 @@ export function DashboardLayoutShell() {
         </Link>
 
         <nav
-          className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto"
+          className="no-scrollbar flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto"
           aria-label="Dashboard navigation"
         >
           {NAV_ITEMS.map((item) => {
@@ -46,7 +46,7 @@ export function DashboardLayoutShell() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`flex h-8 flex-shrink-0 items-center border px-3 font-mono text-[9px] uppercase tracking-[0.16em] transition-colors ${
+                className={`flex h-8 flex-shrink-0 items-center whitespace-nowrap border px-3 font-mono text-[9px] uppercase tracking-[0.16em] transition-colors ${
                   active
                     ? "border-white/25 bg-white/10 text-white"
                     : "border-transparent text-zinc-500 hover:border-white/10 hover:text-white"
@@ -63,15 +63,7 @@ export function DashboardLayoutShell() {
             <span className="h-1.5 w-1.5 bg-emerald-400" />
             Live
           </span>
-          <form action="/api/auth/signout" method="POST">
-            <button
-              type="submit"
-              className="flex h-8 items-center gap-2 border border-white/10 px-2.5 font-mono text-[8px] uppercase tracking-[0.16em] text-zinc-500 transition-colors hover:border-white/30 hover:text-white"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Sign out</span>
-            </button>
-          </form>
+          <SignOutButton className="flex h-8 items-center gap-2 border border-white/10 px-2.5 font-mono text-[8px] uppercase tracking-[0.16em] text-zinc-500 transition-colors hover:border-white/30 hover:text-white" />
         </div>
       </div>
     </header>

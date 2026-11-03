@@ -8,9 +8,11 @@ import {
   Hash,
   ShieldCheck,
   TriangleAlert,
+  X,
 } from "lucide-react";
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetHeader,
@@ -83,10 +85,23 @@ export function SignalDrawer({ opportunity, open, onClose }: SignalDrawerProps) 
     >
       <SheetContent
         side="right"
-        className="w-full gap-0 border-l border-white/10 bg-[#050505] p-0 text-white sm:max-w-[560px]"
+        showCloseButton={false}
+        className="w-full gap-0 border-l border-white/10 bg-[#050505] p-0 text-white data-[side=right]:w-full data-[side=right]:sm:max-w-[560px]"
       >
         <div className="flex h-full flex-col">
-          <SheetHeader className="border-b border-white/10 px-6 py-5 pr-12">
+          <SheetClose
+            render={
+              <button
+                type="button"
+                aria-label="Close provenance record"
+                className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center border border-white/15 bg-[#050505] text-zinc-400 transition-colors hover:border-white/40 hover:text-white"
+              />
+            }
+          >
+            <X className="h-4 w-4" />
+          </SheetClose>
+
+          <SheetHeader className="border-b border-white/10 px-4 py-5 pr-14 sm:px-6">
             <p className="font-mono text-[8px] uppercase tracking-[0.28em] text-zinc-500">
               {sectorLabel(opportunity.sector)} ·{" "}
               {regionLabel(opportunity.region)} ·{" "}
@@ -103,7 +118,7 @@ export function SignalDrawer({ opportunity, open, onClose }: SignalDrawerProps) 
             </SheetDescription>
           </SheetHeader>
 
-          <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
+          <div className="flex-1 space-y-6 overflow-y-auto px-4 py-6 sm:px-6">
             {/* Core metrics */}
             <div className="grid grid-cols-3 gap-px bg-white/10">
               <div className="bg-[#050505] p-3">
@@ -277,7 +292,7 @@ export function SignalDrawer({ opportunity, open, onClose }: SignalDrawerProps) 
             </section>
           </div>
 
-          <div className="flex items-center justify-between gap-3 border-t border-white/10 px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-4 py-4 sm:px-6">
             <span className="flex items-center gap-2 font-mono text-[8px] uppercase tracking-[0.2em] text-zinc-500">
               <FileText className="h-3.5 w-3.5" />
               Source-verified evidence

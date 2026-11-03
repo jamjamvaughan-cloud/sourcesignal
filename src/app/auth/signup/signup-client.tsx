@@ -47,7 +47,9 @@ export default function SignUpPageClient() {
         return;
       }
 
-      router.push("/onboarding");
+      // Full navigation so the cross-domain session cookie is applied before
+      // the dashboard request runs.
+      window.location.replace(data.redirectTo || "/dashboard");
     } catch (err: unknown) {
       setError(
         err instanceof Error ? err.message : "Signup failed.",

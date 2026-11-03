@@ -87,9 +87,23 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (password.length < 8) {
+  if (password.length < 10) {
     return NextResponse.json(
-      { error: "Password must be at least 8 characters." },
+      { error: "Password must be at least 10 characters." },
+      { status: 400 },
+    );
+  }
+  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password)) {
+    return NextResponse.json(
+      {
+        error: "Password must contain both uppercase and lowercase letters.",
+      },
+      { status: 400 },
+    );
+  }
+  if (!/[0-9]/.test(password)) {
+    return NextResponse.json(
+      { error: "Password must contain at least one digit." },
       { status: 400 },
     );
   }
@@ -196,6 +210,7 @@ export async function POST(request: Request) {
     const response = NextResponse.json(
       {
         success: true,
+        redirectTo: "/dashboard",
         user: {
           id: newUser.id,
           email: newUser.email,

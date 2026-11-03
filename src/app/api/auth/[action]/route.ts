@@ -4,6 +4,7 @@
  * POST /api/auth/signin   — verify credentials and issue a session cookie
  * POST /api/auth/signup   — create an account (static route also exists)
  * POST /api/auth/signout  — clear the session cookie and stored session
+ * POST /api/auth/logout   — alias for signout
  * GET  /api/auth/me       — resolve the current session's user + plan
  */
 
@@ -102,7 +103,12 @@ export async function POST(
   const { action } = await params;
 
   // CSRF guard on mutation endpoints.
-  if (action === "signup" || action === "signin" || action === "signout") {
+  if (
+    action === "signup" ||
+    action === "signin" ||
+    action === "signout" ||
+    action === "logout"
+  ) {
     const csrfError = csrfGuard(request);
     if (csrfError) return csrfError;
   }
@@ -225,6 +231,8 @@ export async function POST(
         );
 
         const response = NextResponse.json({
+          success: true,
+          redirectTo: "/dashboard",
           user: { id: created.userId, email: created.email },
           organisationId: created.organisationId,
           plan: "free",
@@ -293,6 +301,8 @@ export async function POST(
         );
 
         const response = NextResponse.json({
+          success: true,
+          redirectTo: "/dashboard",
           user: { id: user.id, email: user.email },
           plan: await getUserPlanId(user.id as string),
         });
@@ -313,7 +323,8 @@ export async function POST(
       }
     }
 
-    case "signout": {
+    case "signout":
+    case "logout": {
       const token = readSessionToken(request.headers.get("cookie"));
       if (token) {
         await deleteSession(token).catch((err: unknown) => {
@@ -323,8 +334,39 @@ export async function POST(
         });
       }
 
-      const response = NextResponse.json({ ok: true });
+      // A browser form/navigation post must never render the JSON body.
+      // SPA callers (fetch) receive JSON with an explicit redirect target.
+      const accept = request.headers.get("accept") ?? "";
+      const isNavigation =
+        request.headers.get("sec-fetch-mode") === "navigate" ||
+        accept.includes("text/html");
+
+      if (isNavigation) {
+        const configuredOrigin =
+          process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+          process.env.APP_ORIGIN?.trim();
+        let target: URL;
+        try {
+          target = new URL(
+            "/auth/signin",
+            configuredOrigin || request.url,
+          );
+        } catch {
+          target = new URL("/auth/signin", request.url);
+        }
+        const redirect = NextResponse.redirect(target, 303);
+        redirect.headers.set("Set-Cookie", clearSessionCookie());
+        redirect.headers.set("Cache-Control", "no-store");
+        return redirect;
+      }
+
+      const response = NextResponse.json({
+        success: true,
+        ok: true,
+        redirectTo: "/auth/signin",
+      });
       response.headers.set("Set-Cookie", clearSessionCookie());
+      response.headers.set("Cache-Control", "no-store");
       return response;
     }
 
