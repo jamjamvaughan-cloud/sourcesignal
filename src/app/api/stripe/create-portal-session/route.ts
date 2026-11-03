@@ -7,7 +7,7 @@
  * Requires a valid session cookie. The user must have a Stripe customer ID
  * on their user record.
  *
- * Stripe is initialized lazily at request time so that `next build` on
+ * Stripe instance is created lazily at request time so that `next build` on
  * Vercel does not fail when STRIPE_SECRET_KEY is not set at build time.
  */
 
@@ -15,17 +15,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { error, info } from "@/lib/logger";
+import Stripe from "stripe";
 
-let stripeInstance: Stripe.Stripe | null = null;
+let stripeInstance: Stripe | null = null;
 
-function getStripe(): Stripe.Stripe {
+function getStripe(): Stripe {
   if (!stripeInstance) {
     const key = process.env.STRIPE_SECRET_KEY;
     if (!key) {
       throw new Error("STRIPE_SECRET_KEY is not set.");
     }
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const Stripe = require("stripe");
     stripeInstance = new Stripe(key, {
       apiVersion: "2026-10-28.endive",
     });
