@@ -49,3 +49,12 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]
+
+# 4. Ingestion worker — runs the primary-source signal loop.
+#    Reuses the builder stage so TypeScript sources and dev tooling (tsx) are
+#    present. Start it with the `ingestion` compose profile.
+FROM builder AS ingestion
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+CMD ["./node_modules/.bin/tsx", "scripts/ingest-signals.ts", "--watch"]

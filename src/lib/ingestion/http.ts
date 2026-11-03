@@ -112,6 +112,16 @@ export function parseAmount(value: unknown): number | null {
 /** Converts a date-like value to an ISO string, or null when invalid. */
 export function toIsoDate(value: unknown): string | null {
   if (typeof value !== "string" && typeof value !== "number") return null;
+
+  // TED returns local dates as "YYYY-MM-DD+01:00", which `new Date()` rejects.
+  if (typeof value === "string") {
+    const tedDate = value.trim().match(/^(\d{4}-\d{2}-\d{2})\+(\d{2}:\d{2})$/);
+    if (tedDate) {
+      const date = new Date(`${tedDate[1]}T00:00:00+${tedDate[2]}`);
+      return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    }
+  }
+
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
@@ -255,8 +265,22 @@ export function localisedText(value: unknown): string | undefined {
   }
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
-    for (const key of ["en", "eng", "value", "text", "label", "title"]) {
+    for (const key of [
+      "en",
+      "eng",
+      "value",
+      "text",
+      "label",
+      "title",
+      "name",
+    ]) {
       const text = localisedText(record[key]);
+      if (text) return text;
+    }
+    // TED and EU Open Data localise titles under arbitrary language codes
+    // (e.g. "ron", "hun", "deu"). Fall back to the first usable value.
+    for (const entry of Object.values(record)) {
+      const text = localisedText(entry);
       if (text) return text;
     }
   }

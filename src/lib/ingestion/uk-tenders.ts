@@ -38,11 +38,11 @@ export class UkTendersAdapter implements SignalSourceAdapter {
     const url = new URL(
       process.env.UK_FIND_A_TENDER_API_URL?.trim() || DEFAULT_API_URL,
     );
-    url.searchParams.set("publishedFrom", since.toISOString().slice(0, 10));
-    url.searchParams.set(
-      "publishedTo",
-      new Date().toISOString().slice(0, 10),
-    );
+    // Find a Tender expects local datetimes without a timezone suffix, e.g.
+    // "2026-11-03T09:00:00". Date-only or trailing "Z" values return 400.
+    const ocdsDate = (date: Date) => date.toISOString().slice(0, 19);
+    url.searchParams.set("updatedFrom", ocdsDate(since));
+    url.searchParams.set("updatedTo", ocdsDate(new Date()));
     url.searchParams.set("limit", String(clampLimit(options?.limit)));
 
     const data = await fetchJson<unknown>(url);

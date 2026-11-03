@@ -3,7 +3,9 @@ import {
   buildCommercialWhy,
   inferOpportunityType,
   inferSector,
+  localisedText,
   parseAmount,
+  toIsoDate,
 } from "../src/lib/ingestion/http";
 import { buildSourceHash } from "../src/lib/ingestion/runner";
 import {
@@ -61,6 +63,21 @@ describe("ingestion helpers", () => {
     expect(inferOpportunityType("new regulatory reporting mandate")).toBe(
       "COMPLIANCE",
     );
+  });
+
+  it("reads localised values under arbitrary language codes", () => {
+    expect(localisedText({ ron: ["Spital Județean"] })).toBe(
+      "Spital Județean",
+    );
+    expect(localisedText({ title: { eng: "Grid upgrade" } })).toBe(
+      "Grid upgrade",
+    );
+  });
+
+  it("normalises TED local dates with a timezone offset", () => {
+    expect(toIsoDate("2026-10-27+01:00")).toBe("2026-10-26T23:00:00.000Z");
+    expect(toIsoDate("2026-10-27")).toBe("2026-10-27T00:00:00.000Z");
+    expect(toIsoDate("not a date")).toBeNull();
   });
 
   it("builds a single-sentence commercial rationale", () => {

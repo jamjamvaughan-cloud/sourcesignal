@@ -8,8 +8,8 @@
     "start": "next start -H localhost -p 3000",
     "lint": "eslint",
     "test": "vitest run",
-    "ingest:signals": "npx --yes tsx scripts/ingest-signals.ts --watch",
-    "ingest:signals:once": "npx --yes tsx scripts/ingest-signals.ts --once"
+    "ingest:signals": "tsx scripts/ingest-signals.ts --watch",
+    "ingest:signals:once": "tsx scripts/ingest-signals.ts --once"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -45,6 +45,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"

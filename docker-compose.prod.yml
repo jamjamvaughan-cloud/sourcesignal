@@ -172,6 +172,43 @@ services:
       - no-new-privileges:true
 
   # ---------------------------------------------------------------
+  # Primary-source ingestion worker
+  #
+  # Runs the UK/US/EU adapters every 15 minutes and writes normalised
+  # rows to the PostgreSQL `signals` table. Key-authenticated adapters
+  # self-disable when their API keys are unset, so the free sources run
+  # without extra configuration.
+  #
+  #   docker compose -f docker-compose.prod.yml --profile ingestion up -d --build ingestion
+  # ---------------------------------------------------------------
+  ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ingestion
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?Set NEXT_PUBLIC_APP_URL in .env}
+        APP_ORIGIN: ${APP_ORIGIN:?Set APP_ORIGIN in .env}
+    container_name: sourcesignal-ingestion
+    profiles:
+      - ingestion
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sourcesignal_backend
+    restart: unless-stopped
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+
+  # ---------------------------------------------------------------
   # Caddy — TLS + reverse proxy for api.sourcesignal.site
   # ---------------------------------------------------------------
   caddy:

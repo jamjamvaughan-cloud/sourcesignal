@@ -375,10 +375,12 @@ export function startIngestionLoop(
   info("Starting primary-source ingestion loop", { intervalMs });
   void tick();
 
+  // Do not unref the timer: in a standalone worker the interval is the only
+  // handle keeping the process alive, and an unref'd timer makes the container
+  // exit after the first cycle.
   const timer = setInterval(() => {
     void tick();
   }, intervalMs);
-  if (typeof timer.unref === "function") timer.unref();
 
   return () => {
     stopped = true;

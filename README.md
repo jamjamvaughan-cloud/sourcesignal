@@ -148,8 +148,16 @@ npm run ingest:signals:once   # single cycle
 npm run ingest:signals        # 15-minute background loop
 ```
 
+On the VPS, run the loop as a container on the backend network:
+
+```bash
+docker compose -f docker-compose.prod.yml --profile ingestion up -d --build ingestion
+```
+
 Each row is keyed by a SHA-256 `source_hash`, so repeated runs are idempotent
-and duplicates are ignored.
+and duplicates are ignored. TED's legacy SPARQL endpoint is retired, so the
+free TED adapter uses the supported v3 notices search API; setting
+`TED_EU_API_KEY` switches to the authenticated variant automatically.
 
 ## Project structure
 

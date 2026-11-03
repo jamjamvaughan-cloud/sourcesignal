@@ -2,7 +2,7 @@
  * EU Open Data Portal — procurement and policy dataset releases.
  *
  * Free, unauthenticated search API.
- * https://data.europa.eu/api/hub/store/search
+ * https://data.europa.eu/api/hub/search/search
  *
  * These records are policy/programme signals rather than individual tenders.
  */
@@ -23,7 +23,7 @@ import type {
   SignalSourceAdapter,
 } from "./types";
 
-const DEFAULT_API_URL = "https://data.europa.eu/api/hub/store/search";
+const DEFAULT_API_URL = "https://data.europa.eu/api/hub/search/search";
 
 export class EuOpenDataAdapter implements SignalSourceAdapter {
   readonly name = "eu-opendata";
@@ -36,7 +36,6 @@ export class EuOpenDataAdapter implements SignalSourceAdapter {
     );
     url.searchParams.set("query", "public procurement");
     url.searchParams.set("limit", String(clampLimit(options?.limit)));
-    url.searchParams.set("format", "json");
 
     const data = await fetchJson<unknown>(url);
     if (!data) return [];
@@ -54,18 +53,19 @@ export class EuOpenDataAdapter implements SignalSourceAdapter {
 
       const sourceUrl =
         pickString(
+          item.homepage,
           item.landingPage,
           item.landing_page,
           item.url,
           item.uri,
         ) ??
-        (pickString(item.identifier)?.startsWith("http")
-          ? pickString(item.identifier)
+        (pickString(item.id)?.startsWith("http")
+          ? pickString(item.id)
           : undefined);
       if (!sourceUrl) return [];
 
       const sourceId =
-        pickString(item.identifier, item.id, item.uri, title) ?? title;
+        pickString(item.id, item.identifier, item.uri, title) ?? title;
       const publisher = asRecord(item.publisher);
       const buyerName =
         localisedText(item.publisher) ??
