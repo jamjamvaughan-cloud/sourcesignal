@@ -9,7 +9,9 @@ import type { NextConfig } from "next";
  *     the app runs in standalone mode behind Caddy.
  */
 const backendUrl = (
-  process.env.BACKEND_URL ?? process.env.API_BACKEND_URL
+  process.env.NEXT_PUBLIC_API_URL ??
+  process.env.BACKEND_URL ??
+  process.env.API_BACKEND_URL
 )
   ?.trim()
   .replace(/\/+$/, "");
