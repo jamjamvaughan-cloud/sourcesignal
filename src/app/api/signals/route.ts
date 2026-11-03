@@ -9,11 +9,10 @@
  * filtering and pagination.
  *
  * Tier gating:
- *   - Free users: signals are embargoed by 24 hours (published_at must be
- *     older than NOW() - INTERVAL '24 hours'), and Pro-only fields
- *     (commercial_why, estimated_value, opportunity_score,
- *     vulnerability_trigger, winner) are stripped.
- *   - Pro/Enterprise users: full access, no delay, all fields.
+ *   - Free users: historical catalog from Jan 1, 2025 through yesterday
+  *     (published_at >= '2025-01-01' AND published_at <= NOW() - INTERVAL
+  *     '24 hours'). Pro-only fields are stripped.
+   *   - Pro/Enterprise users: full access, no delay, all fields.
  *
  * Server-side only: queries PostgreSQL directly via the shared `pg` pool.
  * Requires an authenticated session (cookie forwarded from the caller).
@@ -39,7 +38,8 @@ const SECTOR_TO_TAXONOMY: Record<string, string> = {
 const DEFAULT_PER_PAGE = 50;
 const MAX_PER_PAGE = 100;
 
-/** Free users see signals no newer than 24 hours old. */
+/** Free users see signals from Jan 1, 2025 through yesterday (24h embargo). */
+const FREE_EMBARGO_START = "2025-01-01";
 const EMBARGO_HOURS = 24;
 
 interface SignalRow {
@@ -153,11 +153,11 @@ export async function GET(
     paramIndex++;
   }
 
-  // Free users: embargo signals by 24 hours (published_at must be older
-  // than NOW() - INTERVAL '24 hours').
+  // Free users: historical catalog from Jan 1, 2025 through yesterday
+  // (24h embargo on newly ingested signals).
   if (!isPro) {
     conditions.push(
-      `published_at <= NOW() - INTERVAL '${EMBARGO_HOURS} hours'`,
+      `published_at >= '${FREE_EMBARGO_START}' AND published_at <= NOW() - INTERVAL '${EMBARGO_HOURS} hours'`,
     );
   }
 
