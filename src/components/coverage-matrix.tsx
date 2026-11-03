@@ -5,9 +5,13 @@
  * country/sector/tier, latest ingestion run, uptime, and vulnerability
  * trigger distribution. Instills buyer confidence by showing exactly what
  * sources are being monitored and how fresh the data is.
+ *
+ * All data is fetched from the backend API (/api/coverage) — never from
+ * PostgreSQL directly — so this component works on the Vercel frontend
+ * deployment without any database credentials.
  */
 
-import { query } from "@/lib/db";
+import { backendJson } from "@/lib/backend";
 
 interface CoverageData {
   adapters: {
@@ -36,144 +40,22 @@ interface CoverageData {
 }
 
 async function fetchCoverageData(): Promise<CoverageData> {
-  // Count active adapters by country
-  const adapterStats = await query(
-    `SELECT country_code, COUNT(*) as count
-       FROM adapters
-      WHERE is_active = TRUE
-      GROUP BY country_code
-      ORDER BY country_code`,
+  const result = await backendJson<CoverageData>("/api/coverage");
+
+  return (
+    result ?? {
+      adapters: { total: 0, byCountry: [] },
+      signals: {
+        total: 0,
+        byTier: [],
+        byCountry: [],
+        bySector: [],
+        byTrigger: [],
+      },
+      ingestion: { lastRun: null, latestSignalCapturedAt: null },
+      uptime: "0.0%",
+    }
   );
-
-  // Total adapters
-  const totalAdapters = await query(
-    `SELECT COUNT(*) as count FROM adapters WHERE is_active = TRUE`,
-  );
-
-  // Total signals (opportunities)
-  const totalSignals = await query(
-    `SELECT COUNT(*) as count FROM opportunities WHERE is_demonstration = FALSE`,
-  );
-
-  // Signals by tier
-  const signalsByTier = await query(
-    `SELECT signal_tier, COUNT(*) as count
-       FROM opportunities
-      WHERE is_demonstration = FALSE
-      GROUP BY signal_tier
-      ORDER BY signal_tier`,
-  );
-
-  // Signals by country
-  const signalsByCountry = await query(
-    `SELECT country, COUNT(*) as count
-       FROM opportunities
-      WHERE is_demonstration = FALSE
-      GROUP BY country
-      ORDER BY count DESC
-      LIMIT 10`,
-  );
-
-  // Signals by sector
-  const signalsBySector = await query(
-    `SELECT sector, COUNT(*) as count
-       FROM opportunities
-      WHERE is_demonstration = FALSE
-      GROUP BY sector
-      ORDER BY count DESC
-      LIMIT 10`,
-  );
-
-  // Latest ingestion run
-  const latestRun = await query(
-    `SELECT id, status, records_processed, signals_processed,
-            executed_at, completed_at
-       FROM ingestion_runs
-      ORDER BY executed_at DESC
-      LIMIT 1`,
-  );
-
-  // Latest signal capture time
-  const latestSignal = await query(
-    `SELECT source_captured_at
-       FROM opportunities
-      WHERE is_demonstration = FALSE
-      ORDER BY source_captured_at DESC
-      LIMIT 1`,
-  );
-
-  // Vulnerability trigger distribution
-  const signalsByTrigger = await query(
-    `SELECT vulnerability_trigger, COUNT(*) as count
-       FROM opportunities
-      WHERE is_demonstration = FALSE
-        AND vulnerability_trigger IS NOT NULL
-      GROUP BY vulnerability_trigger
-      ORDER BY count DESC`,
-  );
-
-  const adapters = adapterStats.rows.map((row: Record<string, unknown>) => ({
-    country: String(row.country_code),
-    count: Number(row.count),
-  }));
-
-  const tiers = signalsByTier.rows.map((row: Record<string, unknown>) => ({
-    tier: String(row.signal_tier),
-    count: Number(row.count),
-  }));
-
-  const countries = signalsByCountry.rows.map((row: Record<string, unknown>) => ({
-    country: String(row.country),
-    count: Number(row.count),
-  }));
-
-  const sectors = signalsBySector.rows.map((row: Record<string, unknown>) => ({
-    sector: String(row.sector),
-    count: Number(row.count),
-  }));
-
-  const triggers = signalsByTrigger.rows.map((row: Record<string, unknown>) => ({
-    trigger: String(row.vulnerability_trigger),
-    count: Number(row.count),
-  }));
-
-  const uptime =
-    Number(totalSignals.rows[0]?.count ?? 0) > 0 ? 99.8 : 0;
-
-  return {
-    adapters: {
-      total: Number(totalAdapters.rows[0]?.count ?? 0),
-      byCountry: adapters,
-    },
-    signals: {
-      total: Number(totalSignals.rows[0]?.count ?? 0),
-      byTier: tiers,
-      byCountry: countries,
-      bySector: sectors,
-      byTrigger: triggers,
-    },
-    ingestion: {
-      lastRun: latestRun.rows[0]
-        ? {
-            id: latestRun.rows[0].id,
-            status: latestRun.rows[0].status,
-            recordsProcessed: Number(latestRun.rows[0].records_processed ?? 0),
-            signalsProcessed: Number(latestRun.rows[0].signals_processed ?? 0),
-            executedAt: latestRun.rows[0].executed_at
-              ? new Date(latestRun.rows[0].executed_at)
-              : null,
-            completedAt: latestRun.rows[0].completed_at
-              ? new Date(latestRun.rows[0].completed_at)
-              : null,
-          }
-        : null,
-      latestSignalCapturedAt:
-        latestSignal.rows[0]?.source_captured_at
-          ? new Date(latestSignal.rows[0].source_captured_at)
-          : null,
-    },
-    uptime: `${uptime.toFixed(1)}%`,
-  };
 }
 
 export default async function CoverageMatrix() {
