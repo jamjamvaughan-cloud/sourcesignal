@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { TerritoryRadar, type RadarPoint } from "@/components/territory-radar";
 import { SignalDrawer } from "@/components/signal-drawer";
+import { useSignalStream } from "@/hooks/use-signal-stream";
 import {
   capabilityBadges,
   commercialWhy,
@@ -221,9 +222,65 @@ export function DashboardWorkspace({
     null,
   );
 
+  const [liveSignals, setLiveSignals] = React.useState<DashboardOpportunity[]>(
+    [],
+  );
+
+  // Real-time signal stream (SSE).
+  const { isConnected, clientCount, error, reconnect } =
+    useSignalStream(
+      (event) => {
+        const signalId = event.id;
+        if (!signalId) return;
+        setLiveSignals((prev) => {
+          // Avoid duplicates by source_hash or id.
+          if (prev.some((s) => s.id === signalId)) return prev;
+          const record: DashboardOpportunity = {
+            id: signalId,
+            canonical_id: signalId,
+            title: event.title ?? "Untitled signal",
+            buyer: event.buyer_name ?? null,
+            sector: event.sector ?? "TECH",
+            region: event.jurisdiction ?? "UK",
+            country: event.jurisdiction ?? null,
+            location: null,
+            estimated_value: event.estimated_value ?? null,
+            currency: null,
+            procurement_stage: null,
+            published_date: event.published_at ?? null,
+            closing_date: null,
+            confidence: null,
+            signal_tier: null,
+            source_url: event.source_url ?? null,
+            source_name: event.source_name ?? null,
+            source_captured_at: event.created_at ?? null,
+            source_hash: event.source_hash ?? null,
+            summary: null,
+            is_demonstration: false,
+            created_at: event.created_at ?? null,
+            updated_at: null,
+            vulnerability_trigger: null,
+            winner: null,
+            opportunity_score: null,
+            opportunity_type: event.opportunity_type ?? null,
+            commercial_why: event.commercial_why ?? null,
+            supplier_capabilities: null,
+            sub_category: null,
+          };
+          return [record, ...prev];
+        });
+      },
+      true,
+    );
+
+  const allSignals = React.useMemo(
+    () => [...liveSignals, ...opportunities],
+    [liveSignals, opportunities],
+  );
+
   const filtered = React.useMemo(() => {
     const term = query.trim().toLowerCase();
-    return opportunities
+    return allSignals
       .filter((opportunity) => {
         if (sector !== "all" && opportunity.sector !== sector) return false;
         if (
@@ -254,11 +311,11 @@ export function DashboardWorkspace({
         const bClosing = daysUntil(b.closing_date) ?? Number.MAX_SAFE_INTEGER;
         return aClosing - bClosing;
       });
-  }, [opportunities, query, sector, opportunityType]);
+  }, [allSignals, query, sector, opportunityType]);
 
   const radarPoints: RadarPoint[] = React.useMemo(
     () =>
-      filtered.map((opportunity) => ({
+      allSignals.map((opportunity) => ({
         id: opportunity.id,
         region: opportunity.region,
         sector: opportunity.sector,
@@ -267,7 +324,7 @@ export function DashboardWorkspace({
         }`,
         score: signalScore(opportunity),
       })),
-    [filtered],
+    [allSignals],
   );
 
   const openById = React.useCallback(
@@ -329,6 +386,33 @@ export function DashboardWorkspace({
             <Radar className="h-3.5 w-3.5" />
             Radar Map
           </button>
+        </div>
+
+        {/* Live SSE connection indicator */}
+        <div className="flex items-center gap-2 ml-4 border-l border-white/10 pl-4">
+          <span
+            className={`h-1.5 w-1.5 rounded-full transition-colors ${
+              isConnected
+                ? "bg-emerald-500"
+                : error
+                  ? "bg-red-500"
+                  : "bg-slate-500"
+            }`}
+          />
+          <span className="font-mono text-[8px] uppercase tracking-[0.18em]">
+            {isConnected
+              ? `LIVE · ${clientCount ?? 0} client${clientCount === 1 ? "" : "s"}`
+              : error ?? "RECONNECTING…"}
+          </span>
+          {!isConnected && error && (
+            <button
+              type="button"
+              onClick={reconnect}
+              className="ml-1 border border-white/10 px-1.5 py-0.5 font-mono text-[7px] uppercase tracking-[0.1em] text-zinc-400 hover:border-white/30 hover:text-white"
+            >
+              Retry
+            </button>
+          )}
         </div>
       </header>
 

@@ -28,7 +28,15 @@ export interface WebhookDestination {
   readonly sector_filters: string[];
   readonly min_value: number | null;
   readonly is_active: boolean;
+  readonly dlq_attempts: number;
+  readonly dlq_until: string | null;
+  readonly dlq_reason: string | null;
 }
+
+/** Threshold for moving a webhook to the dead-letter queue. */
+const DLQ_FAILURE_THRESHOLD = 3;
+/** How long a webhook stays in DLQ (24 hours). */
+const DLQ_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 /** A normalised signal ready for outbound delivery. */
 export interface SignalPayload {
@@ -86,12 +94,14 @@ export function buildSignalPayload(signal: SignalPayload): unknown {
   };
 }
 
-/** Fetch every active webhook destination. */
+/** Fetch every active webhook destination that is not in the dead-letter queue. */
 export async function fetchActiveWebhooks(): Promise<WebhookDestination[]> {
   const result = await query(
-    `SELECT id, user_id, url, secret, sector_filters, min_value, is_active
+    `SELECT id, user_id, url, secret, sector_filters, min_value, is_active,
+            dlq_attempts, dlq_until, dlq_reason
        FROM webhooks
       WHERE is_active = TRUE
+        AND (dlq_until IS NULL OR dlq_until <= NOW())
       ORDER BY created_at ASC`,
   );
 
@@ -108,7 +118,75 @@ export async function fetchActiveWebhooks(): Promise<WebhookDestination[]> {
         ? null
         : Number(row.min_value),
     is_active: Boolean(row.is_active),
+    dlq_attempts: Number(row.dlq_attempts ?? 0),
+    dlq_until: (row.dlq_until as string | null) ?? null,
+    dlq_reason: (row.dlq_reason as string | null) ?? null,
   }));
+}
+
+/** Record a failed delivery: increment DLQ attempts, move to DLQ if threshold reached. */
+export async function recordDeliveryFailure(
+  webhookId: string,
+  errorMessage: string,
+): Promise<void> {
+  try {
+    await query(
+      `UPDATE webhooks
+          SET dlq_attempts = dlq_attempts + 1,
+              dlq_until = CASE
+                           WHEN dlq_attempts + 1 >= $2 THEN NOW() + ($3 * INTERVAL '1 millisecond')
+                           ELSE dlq_until
+                         END,
+              dlq_reason = CASE
+                           WHEN dlq_attempts + 1 >= $2 THEN $4
+                           ELSE dlq_reason
+                         END
+        WHERE id = $1`,
+      [webhookId, DLQ_FAILURE_THRESHOLD, DLQ_COOLDOWN_MS, errorMessage],
+    );
+  } catch (err) {
+    warn("Failed to update webhook DLQ state", {
+      webhookId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/** Record a successful delivery: reset DLQ attempts. */
+export async function recordDeliverySuccess(webhookId: string): Promise<void> {
+  try {
+    await query(
+      `UPDATE webhooks
+          SET dlq_attempts = 0,
+              dlq_until = NULL,
+              dlq_reason = NULL
+        WHERE id = $1`,
+      [webhookId],
+    );
+  } catch (err) {
+    warn("Failed to reset webhook DLQ state", {
+      webhookId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/** Rotate the signing secret for a webhook destination. */
+export async function rotateWebhookSecret(
+  webhookId: string,
+  newSecret: string,
+): Promise<void> {
+  try {
+    await query(
+      `UPDATE webhooks SET secret = $1 WHERE id = $2`,
+      [newSecret, webhookId],
+    );
+  } catch (err) {
+    warn("Failed to rotate webhook secret", {
+      webhookId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 /** True when the signal matches the webhook's sector and value filters. */
@@ -275,6 +353,17 @@ export async function dispatchSignal(
       status: result.status,
       responseStatusCode: result.statusCode,
     });
+
+    if (result.status === "sent") {
+      await recordDeliverySuccess(webhook.id);
+    } else {
+      await recordDeliveryFailure(
+        webhook.id,
+        result.statusCode
+          ? `HTTP ${result.statusCode}`
+          : "Network error",
+      );
+    }
 
     results.push({
       webhookId: webhook.id,

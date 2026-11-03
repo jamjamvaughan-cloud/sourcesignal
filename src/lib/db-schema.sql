@@ -579,11 +579,21 @@ CREATE TABLE IF NOT EXISTS webhooks (
     sector_filters TEXT[] DEFAULT '{}' NOT NULL,
     min_value NUMERIC(18, 2),
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    -- Dead-letter queue tracking: when a webhook fails repeatedly, it is
+    -- moved to DLQ and delivery is paused until dlq_until.
+    dlq_attempts INT DEFAULT 0 NOT NULL,
+    dlq_until TIMESTAMP WITH TIME ZONE,
+    dlq_reason TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_webhooks_user ON webhooks(user_id);
 CREATE INDEX IF NOT EXISTS idx_webhooks_active ON webhooks(is_active);
+
+ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS dlq_attempts INT DEFAULT 0 NOT NULL;
+ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS dlq_until TIMESTAMP WITH TIME ZONE;
+ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS dlq_reason TEXT;
+CREATE INDEX IF NOT EXISTS idx_webhooks_dlq ON webhooks(dlq_until) WHERE dlq_until IS NOT NULL;
 
 -- 23. Alert / Webhook Delivery Logs
 -- Persisted record of every outbound delivery attempt for audit & retry.
@@ -599,3 +609,38 @@ CREATE TABLE IF NOT EXISTS alert_logs (
 CREATE INDEX IF NOT EXISTS idx_alert_logs_webhook ON alert_logs(webhook_id);
 CREATE INDEX IF NOT EXISTS idx_alert_logs_signal ON alert_logs(signal_id);
 CREATE INDEX IF NOT EXISTS idx_alert_logs_attempted_at ON alert_logs(attempted_at DESC);
+
+-- 24. Backfill Checkpoints
+-- Tracks progress of the 1-year historical backfill per adapter so that
+-- interrupted backfills can resume from the last completed chunk.
+CREATE TABLE IF NOT EXISTS backfill_checkpoints (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    adapter_name VARCHAR(100) NOT NULL UNIQUE,
+    last_completed_window_start TIMESTAMP WITH TIME ZONE NOT NULL,
+    last_completed_window_end TIMESTAMP WITH TIME ZONE NOT NULL,
+    total_inserted INT DEFAULT 0 NOT NULL,
+    total_duplicates INT DEFAULT 0 NOT NULL,
+    total_failed INT DEFAULT 0 NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_backfill_checkpoints_adapter ON backfill_checkpoints(adapter_name);
+
+-- 25. Signal Retention
+-- Retention policy for historical signals. Rows older than retain_until are
+-- eligible for archival/purging. Kept separate from the signals table to
+-- allow policy changes without schema migrations on the hot table.
+CREATE TABLE IF NOT EXISTS signal_retention_policy (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    jurisdiction VARCHAR(10),
+    sector VARCHAR(50),
+    retain_days INT DEFAULT 365 NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(jurisdiction, sector)
+);
+
+-- Default: retain all signals for 365 days regardless of jurisdiction/sector.
+INSERT INTO signal_retention_policy (jurisdiction, sector, retain_days)
+VALUES (NULL, NULL, 365)
+ON CONFLICT (jurisdiction, sector) DO NOTHING;

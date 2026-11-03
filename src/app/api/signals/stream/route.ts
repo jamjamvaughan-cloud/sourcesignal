@@ -4,9 +4,8 @@
  * GET /api/signals/stream
  *
  * Streams live high-velocity signals to connected Pro dashboard clients.
- * The previous implementation subscribed to PocketBase real-time changes;
- * this version polls PostgreSQL every few seconds for newly created
- * MEGAPROCUREMENT / HIGH_CAP opportunities and pushes them as SSE events.
+ * Polls PostgreSQL every few seconds for newly created signals in the
+ * unified `signals` table and pushes them as SSE events.
  *
  * Requires Pro subscription. Uses text/event-stream content type.
  */
@@ -21,8 +20,16 @@ import { error, info } from "@/lib/logger";
 /** How often each connection polls for new signals. */
 const POLL_INTERVAL_MS = 5_000;
 
-/** Signal tiers streamed in real time. */
-const STREAMED_TIERS = ["MEGAPROCUREMENT", "HIGH_CAP"];
+/** Signal sectors streamed in real time (all sectors). */
+const STREAMED_SECTORS = [
+  "TECH",
+  "ENERGY",
+  "HEALTHCARE",
+  "PUBLIC_SECTOR",
+  "CONSTRUCTION",
+  "TRANSPORT",
+  "LOGISTICS",
+];
 
 // Connected SSE clients (used only for connection-count logging).
 const clients = new Set<ReadableStreamDefaultController<Uint8Array>>();
@@ -84,14 +91,16 @@ export async function GET(): Promise<NextResponse> {
       const poll = async () => {
         try {
           const result = await query(
-            `SELECT id, canonical_id, title, buyer, sector, region, country,
-                    signal_tier, estimated_value, currency, source_url, created_at
-               FROM opportunities
+            `SELECT id, title, buyer_name, jurisdiction, sector,
+                    opportunity_type, estimated_value, source_name, source_url,
+                    source_hash, sha256_hash, commercial_why, published_at,
+                    created_at
+               FROM signals
               WHERE created_at > $1
-                AND signal_tier = ANY($2::text[])
+                AND sector = ANY($2::text[])
               ORDER BY created_at ASC
               LIMIT 50`,
-            [lastSeen.toISOString(), STREAMED_TIERS],
+            [lastSeen.toISOString(), STREAMED_SECTORS],
           );
 
           if ((result.rowCount ?? 0) === 0) {
@@ -104,7 +113,7 @@ export async function GET(): Promise<NextResponse> {
             lastSeen = new Date(row.created_at as string);
             controller.enqueue(
               encoder.encode(
-                `data: ${JSON.stringify({ type: "opportunity", ...row })}\n\n`,
+                `data: ${JSON.stringify({ type: "signal", ...row })}\n\n`,
               ),
             );
           }
