@@ -9,7 +9,7 @@
 api.sourcesignal.site {
 	encode zstd gzip
 
-	reverse_proxy api:3000 {
+	reverse_proxy sourcesignal-api:3000 {
 		# Do not buffer Server-Sent Events (/api/signals/stream).
 		flush_interval -1
 	}
