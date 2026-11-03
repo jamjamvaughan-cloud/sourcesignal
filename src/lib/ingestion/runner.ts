@@ -79,6 +79,8 @@ interface PreparedSignal {
   sourceUrl: string;
   sourceHash: string;
   commercialWhy: string;
+  /** Historical publication timestamp from the primary source, when known. */
+  publishedAt: string | null;
 }
 
 function prepareSignal(
@@ -116,6 +118,7 @@ function prepareSignal(
     sourceUrl,
     sourceHash: buildSourceHash(adapter, signal),
     commercialWhy: singleSentence(signal.commercialWhy),
+    publishedAt: signal.publishedAt ?? null,
   };
 }
 
@@ -237,8 +240,9 @@ export async function ingestAdapter(
         const result = await query(
           `INSERT INTO signals (
              title, buyer_name, jurisdiction, sector, opportunity_type,
-             estimated_value, source_name, source_url, source_hash, commercial_why
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             estimated_value, source_name, source_url, source_hash,
+             published_at, commercial_why
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
            ON CONFLICT (source_hash) DO NOTHING
            RETURNING id`,
           [
@@ -251,6 +255,7 @@ export async function ingestAdapter(
             signal.sourceName,
             signal.sourceUrl,
             signal.sourceHash,
+            signal.publishedAt,
             signal.commercialWhy,
           ],
         );

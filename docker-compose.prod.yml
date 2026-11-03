@@ -135,6 +135,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runner
       args:
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?Set NEXT_PUBLIC_APP_URL in .env}
         APP_ORIGIN: ${APP_ORIGIN:?Set APP_ORIGIN in .env}

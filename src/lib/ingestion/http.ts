@@ -54,6 +54,117 @@ export async function fetchJson<T>(
   }
 }
 
+/** Raw fetch result exposing the HTTP status so callers can retry on 429/503. */
+interface FetchRawResult {
+  readonly ok: boolean;
+  readonly status: number;
+  readonly statusText: string;
+  readonly headers: Headers;
+  readonly data: unknown;
+}
+
+/** Low-level fetch that returns the status and parsed JSON (or null on network failure). */
+async function fetchRaw(
+  input: string | URL,
+  init: RequestInit = {},
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<FetchRawResult | null> {
+  const headers = new Headers(init.headers);
+  if (!headers.has("Accept")) headers.set("Accept", "application/json");
+  if (!headers.has("User-Agent")) headers.set("User-Agent", DEFAULT_USER_AGENT);
+
+  try {
+    const response = await fetch(input, {
+      ...init,
+      headers,
+      cache: "no-store",
+      signal: init.signal ?? AbortSignal.timeout(timeoutMs),
+    });
+
+    let data: unknown = null;
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      data = await response.json();
+    } else {
+      data = await response.text();
+    }
+
+    return { ok: response.ok, status: response.status, statusText: response.statusText, headers: response.headers, data };
+  } catch (err) {
+    console.warn(
+      `[ingestion] ${String(input)} failed:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    return null;
+  }
+}
+
+export interface FetchBackoffOptions {
+  timeoutMs?: number;
+  maxRetries?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+}
+
+/** Sleeps for the given number of milliseconds. */
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Fetches JSON with exponential backoff on HTTP 429/503/5xx responses.
+ * Returns null on network failure or after exhausting retries.
+ */
+export async function fetchJsonWithBackoff<T>(
+  input: string | URL,
+  init: RequestInit = {},
+  options: FetchBackoffOptions = {},
+): Promise<T | null> {
+  const {
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    maxRetries = 6,
+    baseDelayMs = 500,
+    maxDelayMs = 30_000,
+  } = options;
+
+  let attempt = 0;
+  while (attempt <= maxRetries) {
+    attempt++;
+    const raw = await fetchRaw(input, init, timeoutMs);
+    if (!raw) return null; // network failure, do not retry
+    if (raw.ok) return raw.data as T;
+
+    const retryable =
+      raw.status === 429 ||
+      raw.status === 503 ||
+      (raw.status >= 500 && raw.status < 600);
+    if (!retryable || attempt > maxRetries) {
+      console.warn(
+        `[ingestion] ${String(input)} returned ${raw.status} ${raw.statusText} (no retry)`,
+      );
+      return null;
+    }
+
+    const retryAfter = raw.headers.get("retry-after");
+    const headerDelay = retryAfter ? Number.parseInt(retryAfter, 10) * 1000 : NaN;
+    const exponential = Math.min(
+      baseDelayMs * Math.pow(2, attempt - 1),
+      maxDelayMs,
+    );
+    // Add jitter so concurrent clients don't retry in lockstep.
+    const delay = Number.isFinite(headerDelay)
+      ? headerDelay
+      : exponential + Math.floor(Math.random() * 500);
+
+    console.warn(
+      `[ingestion] ${String(input)} returned ${raw.status}; retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`,
+    );
+    await sleep(delay);
+  }
+
+  return null;
+}
+
 export function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -124,6 +235,18 @@ export function toIsoDate(value: unknown): string | null {
 
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+/** True when `iso` is null/unknown, or falls within [since, until] inclusive. */
+export function withinWindow(
+  iso: string | null | undefined,
+  since: Date,
+  until: Date,
+): boolean {
+  if (!iso) return true;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return true;
+  return date >= since && date <= until;
 }
 
 export function clampLimit(

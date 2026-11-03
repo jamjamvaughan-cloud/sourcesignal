@@ -1,22 +1,26 @@
 /**
  * SEC EDGAR — corporate filing signals for major federal contractors.
  *
- * Free, unauthenticated JSON submissions API, but SEC requires a descriptive
+ * Free, unauthenticated JSON submissions API. SEC requires a descriptive
  * User-Agent identifying the caller.
- * https://data.sec.gov/submissions/CIK##########.json
  *
- * The watchlist is configurable with SEC_EDGAR_CIKS (comma-separated).
+ * Historical backfill reads `filings.recent` (most recent ~1,000 filings) and
+ * any legacy `filings.files` whose date range overlaps the requested window,
+ * fetching each legacy file with a polite delay between requests.
+ * https://data.sec.gov/submissions/CIK##########.json
  */
 
 import {
   asArray,
   asRecord,
   buildCommercialWhy,
-  fetchJson,
+  fetchJsonWithBackoff,
   inferSector,
   pickString,
+  sleep,
   toIsoDate,
   truncate,
+  withinWindow,
 } from "./http";
 import type {
   IngestionOptions,
@@ -36,18 +40,12 @@ const DEFAULT_CIKS = [
   "0001321655", // Palantir
 ];
 
-const MATERIAL_FORMS = new Set([
-  "8-K",
-  "10-K",
-  "10-Q",
-  "S-1",
-  "S-3",
-  "424B4",
-  "424B5",
-]);
+const MATERIAL_FORMS = new Set(["8-K", "10-K", "10-Q"]);
+
+const PAGE_DELAY_MS = 500;
 
 function classificationForForm(form: string): SignalOpportunityType {
-  if (/^(S-|424B)/.test(form) || form === "8-K") return "EXPANSION";
+  if (form === "8-K") return "EXPANSION";
   return "COMPLIANCE";
 }
 
@@ -56,14 +54,71 @@ function normaliseCik(value: string): string {
   return digits.padStart(10, "0");
 }
 
+function cikPath(cik: string): string {
+  return cik.replace(/^0+/, "") || "0";
+}
+
+/** Normalises a single filing from parallel SEC arrays. */
+function normaliseFiling(
+  cik: string,
+  companyName: string,
+  index: number,
+  fields: {
+    accessionNumber: unknown[];
+    filingDate: unknown[];
+    form: unknown[];
+    primaryDocument: unknown[];
+    primaryDocDescription: unknown[];
+  },
+): NormalisedSignal | null {
+  const accession = String(fields.accessionNumber[index] ?? "");
+  const filingDate = toIsoDate(fields.filingDate[index]);
+  const form = String(fields.form[index] ?? "");
+  if (!MATERIAL_FORMS.has(form) || !accession) return null;
+
+  const accessionPath = accession.replace(/-/g, "");
+  const primaryDocument = String(fields.primaryDocument[index] ?? "");
+  const sourceUrl = primaryDocument
+    ? `https://www.sec.gov/Archives/edgar/data/${cikPath(cik)}/${accessionPath}/${primaryDocument}`
+    : `https://www.sec.gov/Archives/edgar/data/${cikPath(cik)}/${accessionPath}/`;
+
+  const description = pickString(fields.primaryDocDescription[index]) ?? "";
+  const title = truncate(
+    `${companyName}: ${form} filing${description ? ` — ${description}` : ""}`,
+    240,
+  );
+  const text = `${title} ${companyName} ${form} ${description}`;
+  const sector = inferSector(text, "TECH");
+
+  return {
+    title,
+    buyerName: companyName,
+    jurisdiction: "US" as const,
+    sector,
+    opportunityType: classificationForForm(form),
+    estimatedValue: null,
+    sourceName: "SEC EDGAR",
+    sourceUrl,
+    sourceId: `${cik}-${accession}`,
+    commercialWhy: buildCommercialWhy({
+      buyerName: companyName,
+      sector,
+      opportunityType: classificationForForm(form),
+      estimatedValue: null,
+    }),
+    publishedAt: filingDate,
+    rawPayload: { cik, companyName, accession, form, description },
+  };
+}
+
 export class UsSecAdapter implements SignalSourceAdapter {
   readonly name = "us-sec";
   readonly jurisdiction = "US" as const;
   readonly enabled = true;
 
   async discover(options?: IngestionOptions): Promise<NormalisedSignal[]> {
-    const since =
-      options?.since ?? new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const since = options?.since ?? new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const until = options?.until ?? new Date();
     const watchlist = (
       process.env.SEC_EDGAR_CIKS?.split(",") ?? DEFAULT_CIKS
     )
@@ -74,87 +129,80 @@ export class UsSecAdapter implements SignalSourceAdapter {
       process.env.SEC_EDGAR_USER_AGENT?.trim() ||
       "SourceSignal/1.0 (contact@sourcesignal.site)";
 
-    const cap = Math.max(1, options?.limit ?? 100);
     const signals: NormalisedSignal[] = [];
 
     for (const cik of watchlist) {
-      if (signals.length >= cap) break;
-
-      const data = await fetchJson<unknown>(
+      const data = await fetchJsonWithBackoff<unknown>(
         `https://data.sec.gov/submissions/CIK${cik}.json`,
         { headers: { "User-Agent": userAgent } },
       );
       if (!data) continue;
 
-      const company = asRecord(data);
+      const root = asRecord(data);
       const companyName =
-        pickString(company.name, company.entityName) ?? `SEC registrant ${cik}`;
-      const recent = asRecord(asRecord(company.filings).recent);
+        pickString(root.name, root.entityName) ?? `SEC registrant ${cik}`;
+      const filings = asRecord(root.filings);
+      const recent = asRecord(filings.recent);
 
-      const accessionNumbers = asArray(recent.accessionNumber);
-      const filingDates = asArray(recent.filingDate);
-      const forms = asArray(recent.form);
-      const primaryDocuments = asArray(recent.primaryDocument);
-      const descriptions = asArray(recent.primaryDocDescription);
+      // Most recent filings.
+      signals.push(
+        ...this.parseSecArrays(cik, companyName, recent, since, until),
+      );
 
-      for (
-        let index = 0;
-        index < accessionNumbers.length && signals.length < cap;
-        index++
-      ) {
-        const form = String(forms[index] ?? "");
-        if (!MATERIAL_FORMS.has(form)) continue;
+      // Legacy historical submission files overlapping the window.
+      const files = asArray(filings.files);
+      for (const file of files) {
+        const fileRecord = asRecord(file);
+        const filingTo = toIsoDate(pickString(fileRecord.filingTo));
+        // Skip files that end before the window starts.
+        if (filingTo && new Date(filingTo) < since) continue;
+        const fileName = pickString(fileRecord.name);
+        if (!fileName) continue;
 
-        const filingDate = toIsoDate(filingDates[index]);
-        if (filingDate && new Date(filingDate) < since) continue;
-
-        const accession = String(accessionNumbers[index] ?? "");
-        if (!accession) continue;
-
-        const accessionPath = accession.replace(/-/g, "");
-        const cikPath = cik.replace(/^0+/, "") || "0";
-        const primaryDocument = String(primaryDocuments[index] ?? "");
-        const sourceUrl = primaryDocument
-          ? `https://www.sec.gov/Archives/edgar/data/${cikPath}/${accessionPath}/${primaryDocument}`
-          : `https://www.sec.gov/Archives/edgar/data/${cikPath}/${accessionPath}/`;
-
-        const description = pickString(descriptions[index]) ?? "";
-        const title = truncate(
-          `${companyName}: ${form} filing${description ? ` — ${description}` : ""}`,
-          240,
+        const fileData = await fetchJsonWithBackoff<unknown>(
+          `https://data.sec.gov/submissions/${fileName}`,
+          { headers: { "User-Agent": userAgent } },
         );
-        const opportunityType = classificationForForm(form);
-        const text = `${title} ${companyName} ${form} ${description}`;
-        const sector = inferSector(text, "TECH");
+        if (!fileData) continue;
 
-        signals.push({
-          title,
-          buyerName: companyName,
-          jurisdiction: "US",
-          sector,
-          opportunityType,
-          estimatedValue: null,
-          sourceName: "SEC EDGAR",
-          sourceUrl,
-          sourceId: `${cik}-${accession}`,
-          commercialWhy: buildCommercialWhy({
-            buyerName: companyName,
-            sector,
-            opportunityType,
-            estimatedValue: null,
-          }),
-          publishedAt: filingDate,
-          rawPayload: {
-            cik,
-            companyName,
-            accession,
-            form,
-            description,
-          },
-        });
+        const fileRoot = asRecord(fileData);
+        signals.push(
+          ...this.parseSecArrays(cik, companyName, fileRoot, since, until),
+        );
+
+        // Polite delay between SEC requests.
+        await sleep(PAGE_DELAY_MS);
       }
     }
 
+    return signals;
+  }
+
+  /** Parses filings within [since, until] from parallel SEC arrays. */
+  private parseSecArrays(
+    cik: string,
+    companyName: string,
+    root: Record<string, unknown>,
+    since: Date,
+    until: Date,
+  ): NormalisedSignal[] {
+    const fields = {
+      accessionNumber: asArray(root.accessionNumber),
+      filingDate: asArray(root.filingDate),
+      form: asArray(root.form),
+      primaryDocument: asArray(root.primaryDocument),
+      primaryDocDescription: asArray(root.primaryDocDescription),
+    };
+
+    const signals: NormalisedSignal[] = [];
+    const count = fields.accessionNumber.length;
+    for (let index = 0; index < count; index++) {
+      const filingDate = toIsoDate(fields.filingDate[index]);
+      if (filingDate && !withinWindow(filingDate, since, until)) continue;
+
+      const signal = normaliseFiling(cik, companyName, index, fields);
+      if (signal) signals.push(signal);
+    }
     return signals;
   }
 }

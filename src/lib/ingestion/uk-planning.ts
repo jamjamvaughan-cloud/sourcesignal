@@ -5,8 +5,12 @@
  * https://www.planning.data.gov.uk/entity.json
  *
  * The `planning-application` dataset is currently empty on the public API, so
- * the adapter falls back to the published `planning-condition` dataset. Those
+ * the adapter falls back to the populated `planning-condition` dataset. Those
  * records are treated as compliance signals tied to consented development.
+ *
+ * Pagination follows `links.next` (offset-based) until exhausted or
+ * `maxPages` is reached, filtering records to the requested date window via
+ * `entry-date`/`start-date`.
  */
 
 import {
@@ -14,11 +18,14 @@ import {
   asRecord,
   buildCommercialWhy,
   clampLimit,
-  fetchJson,
+  fetchJsonWithBackoff,
   inferSector,
   parseAmount,
   pickString,
+  sleep,
+  toIsoDate,
   truncate,
+  withinWindow,
 } from "./http";
 import type {
   IngestionOptions,
@@ -33,21 +40,28 @@ const DEFAULT_API_URL = "https://www.planning.data.gov.uk/entity.json";
 const DATASETS = ["planning-application", "planning-condition"] as const;
 type PlanningDataset = (typeof DATASETS)[number];
 
+const PAGE_DELAY_MS = 500;
+
 async function fetchEntities(
   dataset: PlanningDataset,
-  options?: IngestionOptions,
-): Promise<unknown[]> {
-  const url = new URL(
-    process.env.UK_PLANNING_API_URL?.trim() || DEFAULT_API_URL,
-  );
+  baseUrl: URL,
+  limit: number,
+): Promise<{ entities: unknown[]; nextUrl: URL | undefined }> {
+  const url = new URL(baseUrl.toString());
   url.searchParams.set("dataset", dataset);
-  url.searchParams.set("limit", String(clampLimit(options?.limit)));
+  url.searchParams.set("limit", String(limit));
 
-  const data = await fetchJson<unknown>(url);
-  if (!data) return [];
+  const data = await fetchJsonWithBackoff<unknown>(url);
+  if (!data) return { entities: [], nextUrl: undefined };
 
   const root = asRecord(data);
-  return asArray(root.entities ?? root.results ?? root.data ?? data);
+  const entities = asArray(root.entities ?? root.results ?? root.data ?? data);
+  const links = asRecord(root.links);
+  const next = pickString(links.next);
+  return {
+    entities,
+    nextUrl: next ? new URL(next) : undefined,
+  };
 }
 
 function mapEntity(
@@ -110,7 +124,16 @@ function mapEntity(
         entity.startDate,
         entity["entry-date"],
         entity.entryDate,
-      ),
+      )
+        ? toIsoDate(
+            pickString(
+              entity["start-date"],
+              entity.startDate,
+              entity["entry-date"],
+              entity.entryDate,
+            ),
+          )
+        : null,
       rawPayload: { entity, dataset },
     },
   ];
@@ -122,13 +145,48 @@ export class UkPlanningAdapter implements SignalSourceAdapter {
   readonly enabled = true;
 
   async discover(options?: IngestionOptions): Promise<NormalisedSignal[]> {
+    const since = options?.since ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const until = options?.until ?? new Date();
+    const limit = clampLimit(options?.limit);
+    const maxPages = options?.maxPages ?? 1;
+    const baseUrl = new URL(
+      process.env.UK_PLANNING_API_URL?.trim() || DEFAULT_API_URL,
+    );
+
+    const signals: NormalisedSignal[] = [];
+
     for (const dataset of DATASETS) {
-      const entities = await fetchEntities(dataset, options);
-      if (entities.length > 0) {
-        return entities.flatMap((entry) => mapEntity(entry, dataset));
+      let nextUrl: URL | undefined = baseUrl;
+      let page = 0;
+      let datasetCount = 0;
+
+      while (nextUrl && page < maxPages) {
+        page++;
+        const { entities, nextUrl: following } = await fetchEntities(
+          dataset,
+          nextUrl,
+          limit,
+        );
+
+        for (const entry of entities) {
+          for (const signal of mapEntity(entry as Record<string, unknown>, dataset)) {
+            const publishedAt = signal.publishedAt;
+            if (publishedAt && !withinWindow(publishedAt, since, until)) continue;
+            signals.push(signal);
+            datasetCount++;
+          }
+        }
+
+        nextUrl = following;
+        if (nextUrl && page < maxPages) await sleep(PAGE_DELAY_MS);
       }
+
+      // Only fall back to the condition dataset if the primary dataset is
+      // empty (as it currently is on the public API).
+      if (datasetCount > 0) break;
     }
-    return [];
+
+    return signals;
   }
 }
 

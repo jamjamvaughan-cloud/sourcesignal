@@ -67,6 +67,27 @@ function closingLabel(closingDate?: string | null): string {
   return `${days}D`;
 }
 
+const SOURCE_BADGE_LABELS: Record<string, string> = {
+  "GOV.UK Find a Tender": "GOV.UK",
+  "Planning Permits": "PLANNING",
+  "Companies House": "COMPANIES HOUSE",
+  USAspending: "USAspending",
+  "SAM.gov": "SAM.gov",
+  "SEC EDGAR": "SEC EDGAR",
+  "TED EU": "TED EU",
+  "EU Open Data": "EU OPEN DATA",
+};
+
+function jurisdictionBadge(region?: string | null): string {
+  return `[${((region ?? "").trim().toUpperCase() || "—")}]`;
+}
+
+function sourceBadge(sourceName?: string | null): string {
+  const name = (sourceName ?? "").trim();
+  const mapped = (SOURCE_BADGE_LABELS[name] ?? name.toUpperCase()) || "SOURCE";
+  return `[${mapped}]`;
+}
+
 function SignalCard({
   opportunity,
   onOpen,
@@ -103,9 +124,17 @@ function SignalCard({
     >
       {/* Meta line */}
       <div className="flex items-center justify-between gap-3 font-mono text-[8px] uppercase tracking-[0.2em] text-zinc-500">
-        <span className="truncate">
-          {sectorLabel(opportunity.sector)} · {regionLabel(opportunity.region)}
-        </span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="border border-white/10 px-1.5 py-0.5 bg-white/5 text-[#D4AF37]">
+            {jurisdictionBadge(opportunity.region)}
+          </span>
+          <span className="border border-white/10 px-1.5 py-0.5 bg-white/5 text-zinc-400">
+            {sourceBadge(opportunity.source_name)}
+          </span>
+          <span className="truncate text-zinc-500">
+            {sectorLabel(opportunity.sector)}
+          </span>
+        </div>
         <span className="flex-shrink-0 text-zinc-600">
           {opportunityTypeLabel(opportunity.opportunity_type)}
         </span>

@@ -9,7 +9,7 @@
  * https://api.ted.europa.eu/v3/notices/search
  */
 
-import { fetchTedNotices } from "./ted";
+import { fetchTedNoticesAllPages } from "./ted";
 import type {
   IngestionOptions,
   NormalisedSignal,
@@ -22,7 +22,7 @@ export class EuTedSparqlAdapter implements SignalSourceAdapter {
   readonly enabled = !process.env.TED_EU_API_KEY?.trim();
 
   async discover(options?: IngestionOptions): Promise<NormalisedSignal[]> {
-    return fetchTedNotices(options);
+    return fetchTedNoticesAllPages(options ?? {});
   }
 }
 

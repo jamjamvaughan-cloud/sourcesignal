@@ -66,8 +66,17 @@ export interface SignalSourceAdapter {
 export interface IngestionOptions {
   /** Only return records published/captured after this date. */
   since?: Date;
-  /** Maximum records to request from the source. */
+  /** Only return records published/captured before this date. */
+  until?: Date;
+  /** Maximum records to request per page from the source. */
   limit?: number;
+  /**
+   * Maximum pages to follow for adapters that support pagination. Defaults to
+   * 1 so routine ingestion stays bounded; the historical backfill raises it.
+   */
+  maxPages?: number;
+  /** Page number for paginated endpoints (used by the historical backfill). */
+  page?: number;
 }
 
 export interface SignalIngestionResult {

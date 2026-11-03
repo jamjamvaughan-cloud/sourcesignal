@@ -538,11 +538,15 @@ CREATE TABLE IF NOT EXISTS signals (
     source_url TEXT NOT NULL,
     source_hash VARCHAR(64) NOT NULL UNIQUE,
     commercial_why TEXT NOT NULL,
+    published_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_signals_created_at ON signals(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_signals_published_at ON signals(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_signals_jurisdiction ON signals(jurisdiction);
 CREATE INDEX IF NOT EXISTS idx_signals_sector ON signals(sector);
 CREATE INDEX IF NOT EXISTS idx_signals_opportunity_type ON signals(opportunity_type);
 CREATE INDEX IF NOT EXISTS idx_signals_source_name ON signals(source_name);
+
+ALTER TABLE signals ADD COLUMN IF NOT EXISTS published_at TIMESTAMP WITH TIME ZONE;

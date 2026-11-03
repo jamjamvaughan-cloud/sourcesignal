@@ -13,30 +13,37 @@ import {
   asRecord,
   buildCommercialWhy,
   clampLimit,
-  fetchJson,
+  fetchJsonWithBackoff,
   inferOpportunityType,
   inferSector,
   localisedText,
   parseAmount,
   pickString,
+  sleep,
   toIsoDate,
   truncate,
+  withinWindow,
 } from "./http";
 import type { IngestionOptions, NormalisedSignal } from "./types";
 
 export const TED_API_URL = "https://api.ted.europa.eu/v3/notices/search";
 
+const PAGE_DELAY_MS = 500;
+
 /**
- * Fetches recent TED notices and normalises them into the unified signals
- * schema. Pass an API key to authenticate; anonymous access also works.
+ * Fetches a single page of TED notices within [since, until] and normalises
+ * them into the unified signals schema. Pass an API key to authenticate;
+ * anonymous access also works. Callers paginate by incrementing `options.page`.
  */
 export async function fetchTedNotices(
   options?: IngestionOptions,
   apiKey?: string,
 ): Promise<NormalisedSignal[]> {
-  const since =
-    options?.since ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const since = options?.since ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const until = options?.until ?? new Date();
   const sinceCompact = since.toISOString().slice(0, 10).replace(/-/g, "");
+  const untilCompact = until.toISOString().slice(0, 10).replace(/-/g, "");
+  const page = options?.page ?? 1;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -44,13 +51,13 @@ export async function fetchTedNotices(
   };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-  const data = await fetchJson<unknown>(
+  const data = await fetchJsonWithBackoff<unknown>(
     process.env.TED_EU_API_URL?.trim() || TED_API_URL,
     {
       method: "POST",
       headers,
       body: JSON.stringify({
-        query: `publication-date >= ${sinceCompact}`,
+        query: `publication-date >= ${sinceCompact} AND publication-date <= ${untilCompact}`,
         fields: [
           "publication-number",
           "notice-title",
@@ -61,7 +68,7 @@ export async function fetchTedNotices(
           "links",
         ],
         limit: clampLimit(options?.limit),
-        page: 1,
+        page,
       }),
     },
   );
@@ -72,6 +79,12 @@ export async function fetchTedNotices(
 
   return notices.flatMap((entry) => {
     const notice = asRecord(entry);
+    const publicationDate = toIsoDate(
+      localisedText(notice["publication-date"] ?? notice.publicationDate),
+    );
+    if (publicationDate && !withinWindow(publicationDate, since, until))
+      return [];
+
     const publicationNumber = localisedText(
       notice["publication-number"] ?? notice.publicationNumber,
     );
@@ -84,10 +97,7 @@ export async function fetchTedNotices(
       localisedText(notice["buyer-name"] ?? notice.buyerName) ??
       "European contracting authority";
     const estimatedValue = parseAmount(
-      notice["total-value"] ??
-        notice.totalValue ??
-        notice["estimated-value"] ??
-        notice.estimatedValue,
+      notice["total-value"] ?? notice.totalValue,
     );
     const noticeType = localisedText(
       notice["notice-type"] ?? notice.noticeType,
@@ -120,11 +130,35 @@ export async function fetchTedNotices(
           opportunityType,
           estimatedValue,
         }),
-        publishedAt: toIsoDate(
-          localisedText(notice["publication-date"] ?? notice.publicationDate),
-        ),
+        publishedAt: publicationDate,
         rawPayload: { notice },
       },
     ];
   });
+}
+
+/** Fetches every page of TED notices within [since, until], up to maxPages. */
+export async function fetchTedNoticesAllPages(
+  options: IngestionOptions,
+  apiKey?: string,
+): Promise<NormalisedSignal[]> {
+  const limit = clampLimit(options?.limit);
+  const maxPages = options?.maxPages ?? 1;
+  const all: NormalisedSignal[] = [];
+  let page = options?.page ?? 1;
+
+  while (page <= maxPages) {
+    const pageOptions: IngestionOptions = {
+      ...options,
+      page,
+      limit,
+    };
+    const notices = await fetchTedNotices(pageOptions, apiKey);
+    all.push(...notices);
+    if (notices.length < limit) break;
+    page++;
+    await sleep(PAGE_DELAY_MS);
+  }
+
+  return all;
 }

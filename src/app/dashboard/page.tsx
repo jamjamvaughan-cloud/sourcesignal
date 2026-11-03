@@ -12,24 +12,27 @@ export const metadata: Metadata = {
     "Industrial commercial opportunity engine — real-time opportunity signals the second they drop.",
 };
 
-interface OpportunitiesResponse {
+interface SignalsResponse {
   items?: DashboardOpportunity[];
+  total?: number;
+  page?: number;
+  perPage?: number;
+  hasMore?: boolean;
 }
 
-async function fetchOpportunities(
+async function fetchSignals(
   userCountry: string | null,
 ): Promise<DashboardOpportunity[]> {
   const params = new URLSearchParams({
     page: "1",
     perPage: "100",
-    sort: "-created_at",
   });
   if (userCountry) {
-    params.set("country", userCountry);
+    params.set("region", userCountry);
   }
 
-  const result = await backendJson<OpportunitiesResponse>(
-    `/api/opportunities?${params.toString()}`,
+  const result = await backendJson<SignalsResponse>(
+    `/api/signals?${params.toString()}`,
   );
 
   return result?.items ?? [];
@@ -37,11 +40,11 @@ async function fetchOpportunities(
 
 export default async function DashboardPage() {
   const { user } = await getSessionContext();
-  const opportunities = await fetchOpportunities(user?.country ?? null);
+  const signals = await fetchSignals(user?.country ?? null);
 
   return (
     <DashboardWorkspace
-      opportunities={opportunities}
+      opportunities={signals}
       primarySourcesLabel={PRIMARY_SOURCES_MONITORED_LABEL}
     />
   );
