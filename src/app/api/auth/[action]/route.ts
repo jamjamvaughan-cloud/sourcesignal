@@ -65,6 +65,9 @@ function csrfGuard(request: NextRequest): NextResponse | null {
     }
   }
 
+  // Explicitly allow the production frontend origin (sourcesignal.site)
+  allowedHosts.add("sourcesignal.site");
+
   if (allowedHosts.size > 0 && !allowedHosts.has(originHost)) {
     return NextResponse.json({ error: "CSRF token mismatch." }, { status: 403 });
   }
