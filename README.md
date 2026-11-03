@@ -105,7 +105,7 @@ npx tsx scripts/reset-db.ts
 
 The app is deployed as two halves of the same codebase:
 
-- **Vercel** (`app.sourcesignal.site`) — Next.js frontend. `/api/*` is rewritten to the VPS; no database or secret credentials live on Vercel.
+- **Vercel** (`sourcesignal.site`) — Next.js frontend. `/api/*` is rewritten to the VPS; no database or secret credentials live on Vercel.
 - **FastHost VPS** (`api.sourcesignal.site`) — Next.js API routes, PostgreSQL, PgBouncer, Redis, Caddy TLS, and the ingestion worker.
 
 Supporting files:

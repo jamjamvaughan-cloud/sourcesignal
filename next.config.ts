@@ -18,7 +18,7 @@ const appOrigin =
   process.env.APP_ORIGIN?.trim() ||
   (process.env.NODE_ENV === "development"
     ? "http://localhost:3000"
-    : "https://app.sourcesignal.site");
+    : "https://sourcesignal.site");
 
 const nextConfig: NextConfig = {
   ...(process.env.VERCEL ? {} : { output: "standalone" }),

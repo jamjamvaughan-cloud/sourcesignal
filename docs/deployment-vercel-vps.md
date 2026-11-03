@@ -4,7 +4,7 @@ SourceSignal runs as two deployments of the same repository:
 
 | Tier | Host | Responsibility |
 |---|---|---|
-| Frontend | Vercel (`app.sourcesignal.site`) | Next.js UI, SSR shell, `/api/*` proxy to the VPS |
+| Frontend | Vercel (`sourcesignal.site`) | Next.js UI, SSR shell, `/api/*` proxy to the VPS |
 | Backend | FastHost VPS (`api.sourcesignal.site`) | Next.js API routes, PostgreSQL, PgBouncer, Redis, Caddy, ingestion worker |
 
 Vercel holds **no** database, Redis, Stripe or NVIDIA credentials. All data and
@@ -12,7 +12,7 @@ secrets stay on the VPS.
 
 ```
 Browser
-  │  https://app.sourcesignal.site
+  │  https://sourcesignal.site
   ▼
 Vercel (Next.js frontend)
   │  /api/* rewrite → https://api.sourcesignal.site/api/*
@@ -22,7 +22,7 @@ Caddy (TLS) → Next.js API → PgBouncer → PostgreSQL
 Stripe ── webhook ──────────→ https://api.sourcesignal.site/api/stripe/webhook
 ```
 
-Because the browser only ever talks to `app.sourcesignal.site`, the session
+Because the browser only ever talks to `sourcesignal.site`, the session
 cookie stays first-party. The Vercel rewrite forwards the cookie to the VPS,
 and server components forward it again on server-to-server calls.
 
@@ -34,7 +34,7 @@ Create these records at your DNS provider:
 
 | Type | Name | Value | Purpose |
 |---|---|---|---|
-| `CNAME` | `app` | `cname.vercel-dns.com` | Vercel frontend |
+| `A` | `@` | `76.76.21.21` | Vercel frontend (root domain) |
 | `A` | `api` | `<VPS public IPv4>` | VPS API + Caddy |
 
 Remove any conflicting `A`/`AAAA` records for those names. DNS must resolve
@@ -97,8 +97,8 @@ Edit `.env`:
 
 - Set `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `JWT_SECRET`.
 - Set `DATABASE_URL` and `REDIS_URL` to use the **same** passwords.
-- Set `NEXT_PUBLIC_APP_URL=https://app.sourcesignal.site`.
-- Set `APP_ORIGIN=https://app.sourcesignal.site`.
+- Set `NEXT_PUBLIC_APP_URL=https://sourcesignal.site`.
+- Set `APP_ORIGIN=https://sourcesignal.site`.
 - Add Stripe and NVIDIA credentials.
 - **Leave `BACKEND_URL` unset.**
 
@@ -140,13 +140,13 @@ docker compose -f docker-compose.prod.yml logs -f api
    | Variable | Value |
    |---|---|
    | `BACKEND_URL` | `https://api.sourcesignal.site` |
-   | `NEXT_PUBLIC_APP_URL` | `https://app.sourcesignal.site` |
-   | `APP_ORIGIN` | `https://app.sourcesignal.site` |
+   | `NEXT_PUBLIC_APP_URL` | `https://sourcesignal.site` |
+   | `APP_ORIGIN` | `https://sourcesignal.site` |
 
    Do **not** add `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, Stripe or NVIDIA
    keys to Vercel.
 
-5. Add the domain `app.sourcesignal.site`.
+5. Add the domain `sourcesignal.site`.
 6. Deploy.
 
 `next.config.ts` reads `BACKEND_URL` at build time and registers an external
@@ -267,7 +267,7 @@ Keep the VPS and Vercel in sync by deploying from the same commit.
 | `502` from `api.sourcesignal.site` | API container unhealthy. `docker compose logs api`; check `DATABASE_URL`/`REDIS_URL` hosts. |
 | Caddy cannot issue a certificate | DNS for `api` is missing or still propagating; port 80/443 blocked by the firewall. |
 | `401 Not authenticated` after sign-in | Cookie not forwarded. Confirm the Vercel rewrite is active (`BACKEND_URL` set **before** build) and `APP_ORIGIN` matches the browser origin. |
-| `403 CSRF token mismatch` | `APP_ORIGIN` or `NEXT_PUBLIC_APP_URL` does not match `https://app.sourcesignal.site`. |
+| `403 CSRF token mismatch` | `APP_ORIGIN` or `NEXT_PUBLIC_APP_URL` does not match `https://sourcesignal.site`. |
 | Stripe webhook `400` | `STRIPE_WEBHOOK_SECRET` on the VPS does not match the endpoint in Stripe. |
 | Dashboard loads but is empty | API is reachable but the database has no rows; see the ingestion blocker below. |
 
