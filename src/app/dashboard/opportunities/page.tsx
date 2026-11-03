@@ -331,16 +331,16 @@ export default function OpportunitiesPage() {
       <div className="glass-card overflow-hidden section-enter max-w-full min-w-0">
         <div className="overflow-x-auto">
           <table className="w-full min-w-full text-left text-sm">
-            <thead className="bg-[#0F0F11]">
+            <thead className="bg-[#09090b]">
               <tr className="border-b border-white/5 sticky top-0 z-10">
-                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 w-10">ID</th>
-                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500">Tender Title &amp; Buyer</th>
-                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500">Sector</th>
-                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500">Region</th>
-                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 text-right">CapEx Value</th>
-                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 text-right">Closes In</th>
-                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 text-right">Match %</th>
-                <th className="px-4 py-3 text-[10px] font-inter font-semibold uppercase tracking-wider text-slate-500 text-right w-16">Actions</th>
+                <th className="px-4 py-3 text-[9px] font-mono font-bold uppercase tracking-wider text-slate-500 w-10">ID</th>
+                <th className="px-4 py-3 text-[9px] font-mono font-bold uppercase tracking-wider text-slate-500">Buyer</th>
+                <th className="px-4 py-3 text-[9px] font-mono font-bold uppercase tracking-wider text-slate-500 text-right">Score</th>
+                <th className="px-4 py-3 text-[9px] font-mono font-bold uppercase tracking-wider text-slate-500 text-right">Est. Value</th>
+                <th className="px-4 py-3 text-[9px] font-mono font-bold uppercase tracking-wider text-slate-500">Sector</th>
+                <th className="px-4 py-3 text-[9px] font-mono font-bold uppercase tracking-wider text-slate-500">Region</th>
+                <th className="px-4 py-3 text-[9px] font-mono font-bold uppercase tracking-wider text-slate-500 text-right">Closes</th>
+                <th className="px-4 py-3 text-[9px] font-mono font-bold uppercase tracking-wider text-slate-500 text-right w-16">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
@@ -369,62 +369,53 @@ export default function OpportunitiesPage() {
                   <tr
                     key={opp.id}
                     onClick={() => handleOpenInspector(opp.canonical_id)}
-                    className="table-row cursor-pointer group hover:bg-white/5 transition-all duration-200 ease-out"
+                    className="border-b border-white/5 hover:bg-white/5 transition-colors"
                   >
                     <td className="px-4 py-3">
-                      <span className={`flex h-6 w-6 items-center justify-center text-[10px] font-bold ${opp.signal_tier === "MEGAPROCUREMENT" || opp.signal_tier === "HIGH_CAP" ? "bg-D4AF37 text-[#09090b]" : opp.signal_tier === "STANDARD_COMMERCIAL" ? "bg-white/10 text-white" : "bg-white/5 text-slate-400"}`}>
+                      <span className={`flex h-6 w-6 items-center justify-center text-[10px] font-mono font-bold ${opp.signal_tier === "MEGAPROCUREMENT" || opp.signal_tier === "HIGH_CAP" ? "bg-D4AF37 text-[#09090b]" : opp.signal_tier === "STANDARD_COMMERCIAL" ? "bg-white/10 text-white" : "bg-white/5 text-slate-400"}`}>
                         {opp.canonical_id.slice(-2).toUpperCase()}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-0.5">
-                        <p className="text-sm font-inter font-semibold text-[#E5E5EA] group-hover:text-D4AF37/80 transition-colors">
+                        <p className="text-sm font-mono font-bold text-[#E5E5EA] group-hover:text-D4AF37/80 transition-colors">
                           {opp.title}
                         </p>
                         {opp.buyer && (
-                          <p className="text-[10px] font-inter font-mono text-slate-400 tabular-nums">
+                          <p className="text-[10px] font-mono font-medium text-white tabular-nums">
                             {opp.buyer}
                           </p>
                         )}
-                        <p className="text-[10px] font-inter font-mono text-slate-500 tabular-nums">
+                        <p className="text-[9px] font-mono text-slate-500 tabular-nums">
                           {opp.created_at
                             ? new Date(opp.created_at).toLocaleDateString("en-GB")
                             : "—"}
                         </p>
                       </div>
                     </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-sm font-mono font-bold text-[#E5E5EA] tabular-nums">
+                        {matchPct}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-sm font-mono font-bold text-[#E5E5EA] tabular-nums">
+                        {value}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 text-[10px] font-inter font-mono ${sectorStyle}`}>
+                      <span className={`inline-flex items-center px-2 py-0.5 text-[9px] font-mono font-bold ${sectorStyle}`}>
                         {opp.sector}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-sm font-inter font-mono text-slate-400 tabular-nums">
+                      <span className="text-[9px] font-mono text-slate-400 tabular-nums">
                         {opp.region}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      {opp.vulnerability_trigger ? (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-inter font-bold ${getVulnerabilityStyle(opp.vulnerability_trigger)}`}>
-                          {opp.vulnerability_trigger}
-                        </span>
-                      ) : (
-                        <span className="text-[9px] text-slate-500">—</span>
-                      )}
-                    </td>
                     <td className="px-4 py-3 text-right">
-                      <span className="text-sm font-inter font-bold text-[#E5E5EA] font-mono tabular-nums">
-                        {value}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="text-xs font-inter font-mono text-D4AF37 tabular-nums">
-                        {closingDays !== null ? `${closingDays}d left` : "—"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="text-xs font-inter font-mono font-bold text-[#E5E5EA] tabular-nums">
-                        {matchPct}%
+                      <span className="text-[9px] font-mono font-bold text-D4AF37 tabular-nums">
+                        {closingDays !== null ? `${closingDays}d` : "—"}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
