@@ -131,9 +131,9 @@ export default async function ExecutiveDashboardPage({
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 mb-2">
         <div>
-          <h1 className="text-3xl font-inter font-bold text-white tracking-tight">Executive Summary</h1>
+          <h1 className="text-3xl font-inter font-bold text-white tracking-tight">Opportunity Engine</h1>
           <p className="text-[10px] font-inter font-mono tracking-wider text-slate-400 uppercase mt-1">
-            Your commercial displacement briefing — {new Date().toLocaleDateString("en-GB", { weekday: "long" })}
+            Real-time procurement signals the second they drop
           </p>
         </div>
         <Link
@@ -234,7 +234,7 @@ function HeroBentoCard({
           <div className="flex items-center gap-2.5">
             <Activity className="h-5 w-5 text-D4AF37" />
             <span className="text-[10px] font-inter font-bold text-slate-400 uppercase tracking-wider">
-              Commercial Displacement Briefing
+              Live Opportunity Feed
             </span>
           </div>
         </div>
@@ -244,12 +244,11 @@ function HeroBentoCard({
             {greeting}.
           </p>
           <h2 className="text-2xl font-inter font-bold text-white leading-tight">
-            Here is your commercial displacement briefing.
+            Live procurement signals
           </h2>
           <p className="text-sm font-inter text-slate-400 mt-3 leading-relaxed">
-            £{atRiskSpend.toLocaleString()} of corporate spend is at risk of
-            displacement this quarter. Identify frustrated incumbents and
-            position your alternative before renewal windows close.
+            {atRiskSpend.toLocaleString()} of commercial opportunity spend is
+            active this quarter. Reach buyers before renewal windows close.
           </p>
         </div>
 
@@ -432,7 +431,7 @@ function IncumbentTargetsCard() {
             Top Incumbent Targets
           </p>
           <p className="text-xs font-inter font-bold text-white">
-            Displacement-ready accounts
+            Active opportunity targets
           </p>
         </div>
         <ShieldAlert className="h-4 w-4 text-D4AF37" />
@@ -758,10 +757,10 @@ function GrievanceFeedCard() {
       <div className="p-6 border-b border-slate-800 flex items-center justify-between">
         <div>
           <p className="text-[10px] font-inter font-bold text-slate-500 uppercase tracking-wider">
-            Displacement Feed
+            Live Signal Feed
           </p>
           <p className="text-xs font-inter font-bold text-white">
-            Verified commercial intent & displacement signals
+            Verified commercial opportunity signals
           </p>
         </div>
         <div className="flex items-center gap-1 text-[9px] font-inter text-slate-500">

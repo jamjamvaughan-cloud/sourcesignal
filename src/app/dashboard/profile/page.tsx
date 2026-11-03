@@ -84,25 +84,22 @@ export default function ProfilePage() {
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
 
-  async function loadProfile() {
-    try {
-      const res = await fetch("/api/auth/me", {
-        credentials: "include",
-      });
-      if (!res.ok) return;
-      const me = await res.json();
+  async function loadProfileData() {
+    const res = await fetch("/api/auth/me", {
+      credentials: "include",
+    });
+    if (!res.ok) return null;
+    return res.json();
+  }
+
+  React.useEffect(() => {
+    loadProfileData().then((me) => {
       if (me?.user) {
         setUserEmail(me.user.email);
         setCountryPreferences(me.user.country ? [me.user.country] : []);
         setPlanId(me.plan);
       }
-    } catch {
-      // Silent failure - profile will show defaults
-    }
-  }
-
-  React.useEffect(() => {
-    loadProfile();
+    });
   }, []);
 
   const handleSave = async (e: React.FormEvent) => {

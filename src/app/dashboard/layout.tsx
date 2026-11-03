@@ -1,22 +1,14 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import {
-  LayoutDashboard,
-  Briefcase,
-  BarChart3,
-  Bookmark,
-  Settings,
-  LogOut,
-} from "lucide-react";
+import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
   title: "Command Center | SourceSignal",
-  description: "Commercial Intelligence Workstation.",
+  description: "Commercial Opportunity Engine — real-time procurement signals the second they drop.",
 };
 
 export default function DashboardLayout({
   children,
-}: Readonly<{ children: React.ReactNode }>) {
+}: Readonly<{ children: ReactNode }>) {
   return (
     <div className="flex flex-col h-full bg-[#09090b] text-[#E5E5EA] overflow-x-hidden">
       <DashboardLayoutShell />
@@ -116,3 +108,13 @@ function DashboardLayoutShell() {
     </aside>
   );
 }
+
+import Link from "next/link";
+import {
+  LayoutDashboard,
+  Briefcase,
+  BarChart3,
+  Bookmark,
+  Settings,
+  LogOut,
+} from "lucide-react";
