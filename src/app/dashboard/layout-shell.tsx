@@ -2,110 +2,78 @@
 
 import * as React from "react";
 import Link from "next/link";
-import {
-  LayoutDashboard,
-  Briefcase,
-  BarChart3,
-  Bookmark,
-  Settings,
-  LogOut,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { usePathname } from "next/navigation";
+import { LogOut } from "lucide-react";
+
+const NAV_ITEMS = [
+  { href: "/dashboard", label: "Feed" },
+  { href: "/dashboard/opportunities", label: "Opportunities" },
+  { href: "/dashboard/signals", label: "Signals" },
+  { href: "/dashboard/saved", label: "Saved" },
+  { href: "/dashboard/profile", label: "Profile" },
+] as const;
 
 export function DashboardLayoutShell() {
-  const [collapsed, setCollapsed] = React.useState(false);
+  const pathname = usePathname();
 
   return (
-    <aside
-      className={`fixed inset-y-0 left-0 z-30 flex flex-col border-r border-white/10 bg-[#050505] text-[#E5E5EA] transition-all duration-300 ease-in-out ${collapsed ? "w-16" : "w-64"}`}
-    >
-      <div className="flex h-16 items-center justify-between px-3 border-b border-white/10 bg-[#050505]">
-        <div className="flex items-center gap-2.5">
-          <div className="h-7 w-7 rounded-xl bg-[#09090b] flex items-center justify-center border border-white/10">
-            <span className="text-[9px] font-mono font-bold text-[#ffffff]">S</span>
-          </div>
-          {!collapsed && (
-            <span className="font-mono font-bold text-[9px] tracking-tight text-[#ffffff]">
-              SourceSignal
-            </span>
-          )}
-        </div>
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="p-1.5 rounded-md text-[#E5E5EA]/50 hover:text-white hover:bg-white/5 transition-colors"
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <ChevronLeft className="h-4 w-4" />
-          )}
-        </button>
-      </div>
-
-      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
+    <header className="sticky top-0 z-40 border-b border-white/10 bg-[#050505]">
+      <div className="flex h-14 items-center gap-4 px-4 lg:px-6">
         <Link
           href="/dashboard"
-          className="flex items-center gap-3 w-full px-3 py-2.5 text-[9px] font-mono font-medium transition-all duration-200 ease-out rounded-lg bg-white/10 text-[#ffffff] border border-white/10 shadow-lg shadow-D4AF37/10"
+          className="flex flex-shrink-0 items-center gap-2.5"
+          aria-label="SourceSignal dashboard"
         >
-          <LayoutDashboard className="h-4 w-4 flex-shrink-0" />
-          <span className={`font-mono ${collapsed ? "hidden" : ""}`}>
-            Executive Summary
+          <span className="grid h-6 w-6 place-items-center border border-white/25 font-mono text-[9px] font-bold text-white">
+            S
+          </span>
+          <span className="hidden font-mono text-[10px] font-bold uppercase tracking-[0.24em] text-white sm:inline">
+            SourceSignal
           </span>
         </Link>
-        <Link
-          href="/dashboard/opportunities"
-          className="flex items-center gap-3 w-full px-3 py-2.5 text-xs font-inter font-medium transition-all duration-200 ease-out rounded-xl text-slate-400 hover:bg-white/5 hover:text-white hover:border-transparent"
-        >
-          <Briefcase className="h-4 w-4 flex-shrink-0" />
-          <span className={`font-mono ${collapsed ? "hidden" : ""}`}>
-            Opportunity Explorer
-          </span>
-        </Link>
-        <Link
-          href="/dashboard/signals"
-          className="flex items-center gap-3 w-full px-3 py-2.5 text-xs font-inter font-medium transition-all duration-200 ease-out rounded-xl text-slate-400 hover:bg-white/5 hover:text-white hover:border-transparent"
-        >
-          <BarChart3 className="h-4 w-4 flex-shrink-0" />
-          <span className={`font-inter ${collapsed ? "hidden" : ""}`}>
-            Predictive Signals
-          </span>
-        </Link>
-        <Link
-          href="/dashboard/saved"
-          className="flex items-center gap-3 w-full px-3 py-2.5 text-xs font-inter font-medium transition-all duration-200 ease-out rounded-xl text-slate-400 hover:bg-white/5 hover:text-white hover:border-transparent"
-        >
-          <Bookmark className="h-4 w-4 flex-shrink-0" />
-          <span className={`font-inter ${collapsed ? "hidden" : ""}`}>
-            Saved Watchlist
-          </span>
-        </Link>
-      </nav>
 
-      <div className="mx-3 my-3 h-[1px] bg-white/10" />
-
-      <nav className="px-2 py-2 space-y-0.5">
-        <Link
-          href="/dashboard/profile"
-          className="flex items-center gap-3 w-full px-3 py-2.5 text-xs font-inter font-medium transition-all duration-200 ease-out rounded-xl text-slate-500 hover:bg-white/5 hover:text-white hover:border-transparent"
+        <nav
+          className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto"
+          aria-label="Dashboard navigation"
         >
-          <Settings className="h-4 w-4 flex-shrink-0" />
-          <span className={`font-mono ${collapsed ? "hidden" : ""}`}>
-            Profile
+          {NAV_ITEMS.map((item) => {
+            const active =
+              item.href === "/dashboard"
+                ? pathname === "/dashboard"
+                : pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={`flex h-8 flex-shrink-0 items-center border px-3 font-mono text-[9px] uppercase tracking-[0.16em] transition-colors ${
+                  active
+                    ? "border-white/25 bg-white/10 text-white"
+                    : "border-transparent text-zinc-500 hover:border-white/10 hover:text-white"
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="flex flex-shrink-0 items-center gap-3">
+          <span className="hidden items-center gap-1.5 font-mono text-[8px] uppercase tracking-[0.2em] text-emerald-400 md:flex">
+            <span className="h-1.5 w-1.5 bg-emerald-400" />
+            Live
           </span>
-        </Link>
-        <form action="/api/auth/signout" method="POST">
-          <button
-            className="flex items-center gap-3 w-full px-3 py-2.5 text-xs font-inter font-medium transition-all duration-200 ease-out rounded-xl text-slate-500 hover:bg-white/5 hover:text-white hover:border-transparent"
-          >
-            <LogOut className="h-4 w-4 flex-shrink-0" />
-            <span className={`font-inter ${collapsed ? "hidden" : ""}`}>
-              Sign out
-            </span>
-          </button>
-        </form>
-      </nav>
-    </aside>
+          <form action="/api/auth/signout" method="POST">
+            <button
+              type="submit"
+              className="flex h-8 items-center gap-2 border border-white/10 px-2.5 font-mono text-[8px] uppercase tracking-[0.16em] text-zinc-500 transition-colors hover:border-white/30 hover:text-white"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Sign out</span>
+            </button>
+          </form>
+        </div>
+      </div>
+    </header>
   );
 }

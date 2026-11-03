@@ -159,6 +159,7 @@ export async function listOpportunities(
             estimated_value, currency, procurement_stage, published_date,
             closing_date, confidence, signal_tier, source_url, summary,
             is_demonstration, created_at, updated_at, source_hash,
+            source_name, source_captured_at, vulnerability_trigger, winner,
             sub_category, opportunity_type, opportunity_score, commercial_why,
             supplier_capabilities
      FROM opportunities
@@ -189,7 +190,10 @@ export async function getOpportunity(
     `SELECT id, canonical_id, title, sector, region, location, buyer,
             estimated_value, currency, procurement_stage, published_date,
             closing_date, confidence, signal_tier, source_url, summary,
-            is_demonstration, created_at, updated_at, source_hash
+            is_demonstration, created_at, updated_at, source_hash,
+            source_name, source_captured_at, vulnerability_trigger, winner,
+            sub_category, opportunity_type, opportunity_score, commercial_why,
+            supplier_capabilities
      FROM opportunities WHERE id = $1`,
     [id],
   );
