@@ -181,7 +181,9 @@ export async function getCurrentUser(
     if (!session) return null;
 
     const userResult = await query(
-      `SELECT u.id, u.email, o.country
+      `SELECT u.id, u.email,
+             o.country,
+             u.country_preferences
          FROM users u
          LEFT JOIN LATERAL (
            SELECT org.country
@@ -197,10 +199,15 @@ export async function getCurrentUser(
 
     if ((userResult.rowCount ?? 0) === 0) return null;
 
+    const row = userResult.rows[0];
     return {
-      id: userResult.rows[0].id as string,
-      email: userResult.rows[0].email as string,
-      country: (userResult.rows[0].country as string | null) ?? null,
+      id: row.id as string,
+      email: row.email as string,
+      country:
+        (row.country as string | null) ??
+        (Array.isArray(row.country_preferences) && row.country_preferences[0]
+          ? row.country_preferences[0]
+          : null),
     };
   } catch (err: unknown) {
     error("auth_session_lookup_failed", {
