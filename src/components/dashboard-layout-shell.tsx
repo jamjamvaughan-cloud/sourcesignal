@@ -3,6 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 import {
   LayoutDashboard,
   Briefcase,
@@ -46,7 +48,7 @@ export function Sidebar({
   const router = useRouter();
 
   const handleSignOut = () => {
-    fetch("/api/auth/signout", { method: "POST" }).then(() => {
+    fetch(`${API_URL}/api/auth/signout`, { method: "POST" }).then(() => {
       router.push("/");
     });
   };

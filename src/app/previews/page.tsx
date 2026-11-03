@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import type { Opportunity } from "@/components/opportunities-table";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+
 export default function PreviewsPage() {
   const [opportunities, setOpportunities] = React.useState<Opportunity[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -12,7 +14,7 @@ export default function PreviewsPage() {
   React.useEffect(() => {
     async function fetchOpportunities() {
       try {
-        const res = await fetch("/api/opportunities", {
+        const res = await fetch(`${API_URL}/api/opportunities`, {
           headers: { "Content-Type": "application/json" },
         });
         if (res.ok) {

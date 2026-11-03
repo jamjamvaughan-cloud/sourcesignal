@@ -14,6 +14,8 @@ import { ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { InspectorDrawer, type InspectorData } from "@/components/inspector-drawer";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+
 export interface Opportunity {
   id: string;
   canonical_id: string;
@@ -173,7 +175,7 @@ export default function OpportunitiesPage() {
   React.useEffect(() => {
     async function fetchOpportunities() {
       try {
-        const res = await fetch("/api/opportunities?perPage=50", {
+        const res = await fetch(`${API_URL}/api/opportunities?perPage=50`, {
           headers: { "Content-Type": "application/json" },
         });
         if (res.ok) {

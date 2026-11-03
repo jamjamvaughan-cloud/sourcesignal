@@ -3,6 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 import {
   LayoutDashboard,
   Briefcase,
@@ -82,7 +84,7 @@ export function DashboardNavigation({ user }: { user: { email?: string } }) {
     pathname === href || pathname.startsWith(href + "/");
 
   const handleSignOut = () => {
-    fetch("/api/auth/signout", { method: "POST" }).then(() => {
+    fetch(`${API_URL}/api/auth/signout`, { method: "POST" }).then(() => {
       router.push("/");
     });
   };

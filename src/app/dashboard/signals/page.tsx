@@ -4,6 +4,8 @@ import * as React from "react";
 import Link from "next/link";
 import { Target, ExternalLink } from "lucide-react";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+
 interface Signal {
   id: string;
   title: string;
@@ -191,7 +193,7 @@ export default function PredictiveSignalsPage() {
   React.useEffect(() => {
     async function loadUserCountry() {
       try {
-        const res = await fetch("/api/auth/me", {
+        const res = await fetch(`${API_URL}/api/auth/me`, {
           headers: { "Content-Type": "application/json" },
           credentials: "include",
         });
