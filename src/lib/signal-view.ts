@@ -28,6 +28,7 @@ export interface SignalRecord {
   source_name?: string | null;
   source_captured_at?: string | null;
   source_hash?: string | null;
+  sha256_hash?: string | null;
   summary?: string | null;
   is_demonstration?: boolean;
   created_at?: string | null;

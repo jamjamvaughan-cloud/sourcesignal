@@ -14,6 +14,8 @@
 import { createHash } from "crypto";
 import { query } from "../db";
 import { error, info, warn } from "../logger";
+import { dispatchSignal } from "../webhooks/dispatcher";
+import { buildAuditSnapshot, computeSignalHash } from "./provenance";
 import { SIGNAL_ADAPTERS } from "./adapters";
 import {
   SIGNAL_OPPORTUNITY_TYPES,
@@ -81,6 +83,12 @@ interface PreparedSignal {
   commercialWhy: string;
   /** Historical publication timestamp from the primary source, when known. */
   publishedAt: string | null;
+  /** Content-addressed SHA-256 proof of the raw adapter payload. */
+  sha256Hash: string;
+  /** Raw adapter payload preserved as JSONB for audit. */
+  rawPayloadJson: Record<string, unknown> | null;
+  /** Immutable rendered HTML audit snapshot. */
+  auditSnapshotHtml: string;
 }
 
 function prepareSignal(
@@ -119,6 +127,9 @@ function prepareSignal(
     sourceHash: buildSourceHash(adapter, signal),
     commercialWhy: singleSentence(signal.commercialWhy),
     publishedAt: signal.publishedAt ?? null,
+    sha256Hash: computeSignalHash(signal.rawPayload ?? null),
+    rawPayloadJson: signal.rawPayload ?? null,
+    auditSnapshotHtml: buildAuditSnapshot(signal),
   };
 }
 
@@ -241,9 +252,10 @@ export async function ingestAdapter(
           `INSERT INTO signals (
              title, buyer_name, jurisdiction, sector, opportunity_type,
              estimated_value, source_name, source_url, source_hash,
+             sha256_hash, raw_payload_json, audit_snapshot_html,
              published_at, commercial_why
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-           ON CONFLICT (source_hash) DO NOTHING
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           ON CONFLICT (sha256_hash) DO NOTHING
            RETURNING id`,
           [
             signal.title,
@@ -255,14 +267,49 @@ export async function ingestAdapter(
             signal.sourceName,
             signal.sourceUrl,
             signal.sourceHash,
+            signal.sha256Hash,
+            signal.rawPayloadJson,
+            signal.auditSnapshotHtml,
             signal.publishedAt,
             signal.commercialWhy,
           ],
         );
 
-        if ((result.rowCount ?? 0) > 0) inserted++;
+        const insertedRow = (result.rowCount ?? 0) > 0;
+        if (insertedRow) inserted++;
         else duplicates++;
+
+        // Fan out the newly inserted signal to matching webhook destinations.
+        if (insertedRow) {
+          await dispatchSignal({
+            id: result.rows[0]?.id as string,
+            title: signal.title,
+            buyer_name: signal.buyerName,
+            jurisdiction: signal.jurisdiction,
+            sector: signal.sector,
+            opportunity_type: signal.opportunityType,
+            estimated_value: signal.estimatedValue,
+            source_name: signal.sourceName,
+            source_url: signal.sourceUrl,
+            source_hash: signal.sourceHash,
+            commercial_why: signal.commercialWhy,
+            published_at: signal.publishedAt,
+            sha256_hash: signal.sha256Hash,
+          });
+        }
       } catch (err) {
+        const pgErr = err as { code?: string; detail?: string } | undefined;
+        // A unique violation on source_hash (pre-existing rows were keyed by
+        // source_hash before sha256_hash existed) is a duplicate, not a
+        // failure. sha256_hash conflicts are handled by ON CONFLICT above.
+        if (pgErr?.code === "23505") {
+          duplicates++;
+          warn("Duplicate signal skipped (source_hash already present)", {
+            adapter: adapter.name,
+            sourceId: record.sourceId,
+          });
+          continue;
+        }
         failed++;
         error("Failed to persist signal", {
           adapter: adapter.name,

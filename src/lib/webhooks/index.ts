@@ -141,8 +141,7 @@ export async function dispatchWebhook({
         headers: {
           "Content-Type": "application/json",
           "User-Agent": "SourceSignal/1.0",
-          "X-SourceSignal-Signature": signature,
-          "X-SourceSignal-Timestamp": timestamp,
+          ...(signature ? { "X-SourceSignal-Signature": signature } : {}),
         },
         body: JSON.stringify(payload),
       });

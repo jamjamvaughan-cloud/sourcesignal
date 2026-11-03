@@ -42,6 +42,7 @@ interface SignalRow {
   source_name: string | null;
   source_url: string | null;
   source_hash: string | null;
+  sha256_hash: string | null;
   commercial_why: string | null;
   published_at: string | null;
   created_at: string | null;
@@ -73,6 +74,7 @@ function toSignalRecord(row: SignalRow) {
     source_name: row.source_name ?? null,
     source_captured_at: row.created_at ?? null,
     source_hash: row.source_hash ?? null,
+    sha256_hash: row.sha256_hash ?? null,
     summary: null,
     is_demonstration: false,
     created_at: row.created_at ?? null,

@@ -223,6 +223,65 @@ export function SignalDrawer({ opportunity, open, onClose }: SignalDrawerProps) 
               </div>
             </section>
 
+            {/* Cryptographic Provenance & Audit Trail */}
+            <section className="border border-white/10">
+              <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5">
+                <Hash className="h-3.5 w-3.5 text-[#D4AF37]" />
+                <p className="font-mono text-[8px] uppercase tracking-[0.28em] text-[#D4AF37]">
+                  Verified Primary Artifact [SHA-256 Secure]
+                </p>
+              </div>
+              <div className="space-y-3 px-3 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-[8px] uppercase tracking-[0.22em] text-zinc-500">
+                      Signal SHA-256 hash
+                    </p>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <code className="flex-1 block break-all border border-white/5 bg-white/[0.02] px-2 py-1.5 font-mono text-[9px] leading-relaxed text-zinc-400">
+                        {opportunity.sha256_hash?.trim() ||
+                          opportunity.source_hash?.trim() ||
+                          "AWAITING SOURCE CAPTURE"}
+                      </code>
+                      <button
+                        type="button"
+                        aria-label="Copy SHA-256 hash"
+                        onClick={() => {
+                          const hash =
+                            opportunity.sha256_hash?.trim() ||
+                            opportunity.source_hash?.trim() ||
+                            "";
+                          if (!hash) return;
+                          void navigator.clipboard.writeText(hash);
+                        }}
+                        className="flex-shrink-0 border border-white/10 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.12em] text-zinc-400 transition-colors hover:border-white/35 hover:text-white"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                  <span className="font-mono text-[8px] uppercase tracking-[0.14em] text-emerald-400">
+                    Verified
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Raw payload">
+                    {opportunity.sha256_hash
+                      ? "Captured (JSONB)"
+                      : "Not captured"}
+                  </Field>
+                  <Field label="Audit snapshot">
+                    {opportunity.sha256_hash ? "Immutable HTML" : "—"}
+                  </Field>
+                </div>
+                <p className="mt-2 font-mono text-[8px] uppercase tracking-[0.12em] text-zinc-500">
+                  The SHA-256 digest is computed over the canonical raw
+                  adapter payload and stored immutably. Any change to the
+                  source data produces a different digest.
+                </p>
+              </div>
+            </section>
+
             {/* Incumbent position */}
             <section className="border border-white/10">
               <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5">
