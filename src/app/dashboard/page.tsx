@@ -225,7 +225,7 @@ function HeroBentoCard({
   };
 
   return (
-    <div className="glass-card rounded-3xl border border-slate-800 p-8 overflow-hidden relative group">
+    <div className="border border-white/10 bg-[#09090b] p-6 overflow-hidden relative group">
       {/* Tier-based accent glow */}
       <div className="absolute top-0 right-0 w-48 h-48 blurred rounded-full -mr-12 -mt-12" style={{ backgroundColor: tierColors[tier] }} />
 
@@ -233,20 +233,20 @@ function HeroBentoCard({
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-2.5">
             <Activity className="h-5 w-5 text-D4AF37" />
-            <span className="text-[10px] font-inter font-bold text-slate-400 uppercase tracking-wider">
+            <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-tighter">
               Live Opportunity Feed
             </span>
           </div>
         </div>
 
         <div className="mb-8">
-          <p className="text-[10px] font-inter font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+          <p className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-tighter mb-1.5">
             {greeting}.
           </p>
-          <h2 className="text-2xl font-inter font-bold text-white leading-tight">
+          <h2 className="text-2xl font-mono font-bold text-white leading-tight tracking-tight">
             Live procurement signals
           </h2>
-          <p className="text-sm font-inter text-slate-400 mt-3 leading-relaxed">
+          <p className="text-[9px] font-mono text-slate-400 mt-2 leading-relaxed">
             {atRiskSpend.toLocaleString()} of commercial opportunity spend is
             active this quarter. Reach buyers before renewal windows close.
           </p>
@@ -254,28 +254,28 @@ function HeroBentoCard({
 
         {/* Big number */}
         <div className="flex items-baseline gap-2 mb-8">
-          <span className="text-4xl font-inter font-bold text-white font-mono tabular-nums">
+          <span className="text-4xl font-mono font-bold text-white tabular-nums">
             £{atRiskSpend.toLocaleString()}
           </span>
-          <span className="text-[10px] font-inter text-slate-400 uppercase tracking-wider">
-            at-risk corporate spend
+          <span className="text-[9px] font-mono text-slate-400 uppercase tracking-tighter">
+            at-risk commercial opportunity spend
           </span>
         </div>
 
         {/* Trend indicator */}
-        <div className="flex items-center gap-2.5 mb-8">
-          <TrendingUp className="h-5 w-5 text-emerald-500" />
-          <span className="text-sm font-inter font-bold text-emerald-400">
+        <div className="flex items-center gap-2 mb-8">
+          <TrendingUp className="h-4 w-4 text-emerald-500" />
+          <span className="text-[9px] font-mono font-bold text-emerald-400">
             +12.4% vs last quarter
           </span>
-          <span className="text-[10px] font-inter text-slate-500">
+          <span className="text-[9px] font-mono text-slate-500">
             · Surge velocity accelerating
           </span>
         </div>
 
         {/* Sparkline */}
-        <div className="mt-auto pt-6 border-t border-slate-800">
-          <div className="flex items-end justify-between gap-1.5 h-32">
+        <div className="mt-auto pt-6 border-t border-white/10 h-32">
+          <div className="flex items-end justify-between gap-1 h-full">
             {points.map((p, i) => {
               const height = ((p - minPoint) / (maxPoint - minPoint)) * 100;
               return (
@@ -285,20 +285,20 @@ function HeroBentoCard({
                   style={{ flex: 1 }}
                 >
                   <div
-                    className="w-full bg-gradient-to-t from-D4AF37/20 via-D4AF37/50 to-D4AF37 rounded-t-sm transition-all duration-300 ease-out group-hover:bg-D4AF37"
+                    className="w-full bg-D4AF37/20 rounded-t-sm transition-all duration-300 ease-out group-hover:bg-D4AF37"
                     style={{
                       height: `${Math.max(4, height)}%`,
                       width: "100%",
                     }}
                   />
-                  <span className="text-[9px] font-inter font-mono text-slate-600">
+                  <span className="text-[8px] font-mono text-slate-600">
                     {Math.round(p)}
                   </span>
                 </div>
               );
             })}
           </div>
-          <div className="flex justify-between mt-3 text-[9px] font-inter font-mono text-slate-500">
+          <div className="flex justify-between mt-2 text-[8px] font-mono text-slate-600">
             <span>Q1 Surge</span>
             <span>Peak</span>
             <span>Q3 Velocity</span>

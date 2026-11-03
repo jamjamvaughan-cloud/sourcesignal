@@ -170,15 +170,17 @@ export default function OpportunitiesPage() {
       <div className="space-y-6 section-enter max-w-full min-w-0">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-2">
           <div>
-            <h1 className="headline mb-0.5">Corporate Explorer</h1>
-            <p className="text-[10px] font-inter font-mono tracking-wider text-slate-500 uppercase">
-              Commercial displacement intelligence
+            <h1 className="text-2xl font-mono font-bold text-white tracking-tight">
+              Live Opportunity Feed
+            </h1>
+            <p className="text-[9px] font-mono text-slate-400 uppercase tracking-tighter mt-1">
+              Real-time procurement signals the second they drop
             </p>
           </div>
           <div className="flex items-end gap-2">
             <Button
               variant="ghost"
-              className="text-[10px] font-inter font-semibold text-slate-400 hover:text-white hover:bg-white/5 transition-all duration-200 ease-out px-4 py-2 rounded-xl"
+              className="text-[9px] font-mono font-bold text-slate-400 hover:text-white hover:bg-white/5 transition-all duration-200 ease-out px-3 py-2 rounded-md"
               onClick={() => {
                 setCountryFilter("");
                 setIndustryFilter("");
@@ -190,19 +192,17 @@ export default function OpportunitiesPage() {
           </div>
         </div>
 
-        {/* Search bar */}
-        <div className="glass-card p-4 rounded-xl border border-white/5">
+        {/* Search Command Bar */}
+        <div className="bg-[#09090b] p-4 rounded-xl border border-white/10">
           <div className="flex flex-col lg:flex-row gap-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <Input
-                  placeholder="Search title, buyer, sector…"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-10 text-xs pl-10 pr-3 w-full bg-transparent border-transparent text-white placeholder-slate-500 focus:border-D4AF37 focus:ring-0"
-                />
-              </div>
+            <div className="flex-1 relative">
+              <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <Input
+                placeholder="Search title, buyer, sector…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-10 text-xs pl-10 pr-3 w-full bg-transparent border-transparent text-white placeholder-slate-500 focus:border-D4AF37 focus:ring-0"
+              />
             </div>
             <div className="flex items-center gap-2">
               <Select
@@ -247,21 +247,63 @@ export default function OpportunitiesPage() {
               </Select>
             </div>
           </div>
-          {/* Mode toggle */}
-          <div className="flex items-end gap-2">
-            <div className="flex items-center gap-1 text-[9px] font-inter font-mono text-slate-500">
+
+          {/* Mode tabs */}
+          <div className="flex gap-1 mt-3">
+            {MODES.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setMode(m.id)}
+                className={`px-3 py-2 text-[9px] font-mono font-bold transition-all ${
+                  mode === m.id
+                    ? "bg-D4AF37 text-[#09090b] shadow-lg shadow-D4AF37/30"
+                    : "bg-white/5 text-slate-400 border border-white/5 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Classic vs AI toggle */}
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-[8px] font-mono font-bold text-slate-500 uppercase tracking-tighter">
               Classic Filter
+            </span>
+            <div className="flex items-center gap-0 bg-white/5 rounded-xl">
               <button
                 onClick={() => setFilterMode("classic")}
-                className={`ml-1 h-5 w-5 rounded text-[9px] transition-all ${filterMode === "classic" ? "bg-D4AF37 text-[#09090b]" : "bg-white/5 text-slate-400 hover:bg-white/10"}`}
+                className={`px-3 py-1 text-[9px] font-mono font-bold transition-all ${
+                  filterMode === "classic"
+                    ? "bg-D4AF37 text-[#09090b]"
+                    : "bg-white/5 text-slate-400"
+                }`}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="3"/></svg>
+                Classic
               </button>
               <button
                 onClick={() => setFilterMode("ai")}
-                className={`ml-1 h-5 w-5 rounded text-[9px] transition-all ${filterMode === "ai" ? "bg-D4AF37 text-[#09090b]" : "bg-white/5 text-slate-400 hover:bg-white/10"}`}
+                className={`px-3 py-1 text-[9px] font-mono font-bold transition-all ${
+                  filterMode === "ai"
+                    ? "bg-D4AF37 text-[#09090b]"
+                    : "text-slate-500 hover:text-white"
+                }`}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/></svg>
+                AI Intent
+              </button>
+            </div>
+            <div className="flex items-center gap-2 ml-4">
+              <span className="text-[8px] font-mono text-slate-500 uppercase tracking-tighter">
+                Watched Accounts
+              </span>
+              <button className="px-2 py-1 text-[9px] font-mono text-D4AF37 border border-D4AF37/30 hover:bg-D4AF37/5 hover:text-[#09090b]">
+                +
+              </button>
+              <span className="text-[8px] font-mono text-slate-500 uppercase tracking-tighter">
+                Saved Signals
+              </span>
+              <button className="px-2 py-1 text-[9px] font-mono text-D4AF37 border border-D4AF37/30 hover:bg-D4AF37/5 hover:text-[#09090b]">
+                +
               </button>
             </div>
           </div>
