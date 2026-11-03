@@ -5,8 +5,10 @@
  * directly. Server Components call this helper, which forwards the incoming
  * session cookie to the backend deployment (the VPS) over HTTP.
  *
- * `BACKEND_URL` must be set on the frontend deployment, e.g.
- *   BACKEND_URL="https://api.sourcesignal.site"
+ * `NEXT_PUBLIC_API_URL` must be set on the frontend deployment, e.g.
+ *   NEXT_PUBLIC_API_URL="https://api.sourcesignal.site"
+ *
+ * `BACKEND_URL` is accepted as a legacy alias.
  *
  * When the app is running on the VPS itself (or in local development) the
  * helper falls back to the local Next.js server, so the same code works in
@@ -31,20 +33,23 @@ export interface SessionContext {
  * Resolves the backend origin for server-to-server calls.
  *
  * Resolution order:
- *   1. `BACKEND_URL` (set on Vercel, e.g. https://api.sourcesignal.site)
- *   2. `API_BACKEND_URL` (legacy alias)
- *   3. local Next.js server (VPS deployment / local development)
+ *   1. `NEXT_PUBLIC_API_URL` (set on Vercel, e.g. https://api.sourcesignal.site)
+ *   2. `BACKEND_URL` (legacy alias)
+ *   3. `API_BACKEND_URL` (legacy alias)
+ *   4. local Next.js server (VPS deployment / local development)
  */
 export function getBackendBaseUrl(): string {
   const configured =
-    process.env.BACKEND_URL?.trim() || process.env.API_BACKEND_URL?.trim();
+    process.env.NEXT_PUBLIC_API_URL?.trim() ||
+    process.env.BACKEND_URL?.trim() ||
+    process.env.API_BACKEND_URL?.trim();
   if (configured) {
     return configured.replace(/\/+$/, "");
   }
 
   if (process.env.VERCEL) {
     throw new Error(
-      "BACKEND_URL is not set. Configure it with the VPS API origin " +
+      "NEXT_PUBLIC_API_URL is not set. Configure it with the VPS API origin " +
         "(for example https://api.sourcesignal.site).",
     );
   }
