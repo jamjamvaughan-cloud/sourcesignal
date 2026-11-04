@@ -122,6 +122,7 @@ export async function POST(request: Request) {
   }
 
   try {
+    console.log("DIRECT_MARKER_TEST");
     // Hash outside the transaction so the database client is not held during
     // the (CPU-bound) bcrypt work.
     const passwordHash = await bcrypt.hash(password, 10);

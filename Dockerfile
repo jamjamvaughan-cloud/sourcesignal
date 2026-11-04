@@ -26,7 +26,8 @@ ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 ENV APP_ORIGIN=${APP_ORIGIN}
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN npm run build
+# Ensure a clean .next directory so stale build artifacts are never reused.
+RUN rm -rf /app/.next && npm run build
 
 # 3. Production image, copy all the files and run Next.js
 FROM base AS runner
