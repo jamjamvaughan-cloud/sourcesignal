@@ -201,6 +201,7 @@ export async function GET(
     require("fs").appendFileSync("/tmp/signals_debug.txt", `DEBUG: count=${total} all_signals\n`);
   } catch {}
 
+  const offset = (page - 1) * perPage;
   const dataResult = await query(
     `SELECT id, title, buyer_name, jurisdiction, sector, opportunity_type,
             estimated_value, source_name, source_url, source_hash,
@@ -208,7 +209,7 @@ export async function GET(
        FROM signals
        ORDER BY published_at DESC NULLS LAST, created_at DESC
        LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,
-    [perPage, 0],
+    [perPage, offset],
   );
 
   const items = dataResult.rows.map((row) =>
