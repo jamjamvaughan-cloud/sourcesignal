@@ -1,5 +1,4 @@
 /**
-console.log("MARKER_SIGNALS_ROUTE_LOADED");
  * Primary signals API.
  *
  * GET /api/signals
@@ -11,9 +10,7 @@ console.log("MARKER_SIGNALS_ROUTE_LOADED");
  *
  * Tier gating:
  *   - Free users: historical catalog from Jan 1, 2025 through yesterday
-  *     (published_at >= '2025-01-01' AND published_at <= NOW() - INTERVAL
-  *     '24 hours'). Pro-only fields are stripped.
-   *   - Pro/Enterprise users: full access, no delay, all fields.
+ *   - Pro/Enterprise users: full access, no delay, all fields.
  *
  * Server-side only: queries PostgreSQL directly via the shared `pg` pool.
  * Requires an authenticated session (cookie forwarded from the caller).
@@ -49,19 +46,6 @@ const SIGNAL_SECTORS = new Set(Object.keys(SECTOR_TO_TAXONOMY));
 const DEFAULT_PER_PAGE = 50;
 const MAX_PER_PAGE = 100;
 
-function currencyForJurisdiction(jurisdiction: string | null): string | null {
-  switch ((jurisdiction ?? "").toUpperCase()) {
-    case "UK":
-      return "GBP";
-    case "US":
-      return "USD";
-    case "EU":
-      return "EUR";
-    default:
-      return null;
-  }
-}
-
 /** Free users see signals from Jan 1, 2025 through yesterday (24h embargo). */
 const FREE_EMBARGO_START = "2025-01-01";
 const EMBARGO_HOURS = 24;
@@ -96,7 +80,6 @@ function toSignalRecord(row: SignalRow, entitlements: ReturnType<typeof entitlem
     region: row.jurisdiction ?? null,
     country: row.jurisdiction ?? null,
     location: null,
-    // estimated_value is Pro-only (fullDetailsEnabled).
     estimated_value:
       entitlements.fullDetailsEnabled &&
       (typeof row.estimated_value === "number" ||
@@ -105,7 +88,14 @@ function toSignalRecord(row: SignalRow, entitlements: ReturnType<typeof entitlem
         ? Number(row.estimated_value)
         : null,
     currency: entitlements.fullDetailsEnabled
-      ? currencyForJurisdiction(row.jurisdiction)
+      ? (() => {
+          switch ((row.jurisdiction ?? "").toUpperCase()) {
+            case "UK": return "GBP";
+            case "US": return "USD";
+            case "EU": return "EUR";
+            default: return null;
+          }
+        })()
       : null,
     procurement_stage: null,
     published_date: row.published_at,
@@ -121,14 +111,10 @@ function toSignalRecord(row: SignalRow, entitlements: ReturnType<typeof entitlem
     is_demonstration: false,
     created_at: row.created_at ?? null,
     updated_at: null,
-    // vulnerability_trigger and winner are not columns on the signals table;
-    // they exist on the legacy opportunities table. Always null here.
     vulnerability_trigger: null,
     winner: null,
     opportunity_score: null,
     opportunity_type: row.opportunity_type ?? null,
-    // commercial_why is a Pro-only field; Free users get null so the client
-    // can render it as "Locked / Blurred".
     commercial_why: isPro ? (row.commercial_why ?? null) : null,
     supplier_capabilities: null,
     sub_category: null,
@@ -154,26 +140,12 @@ export async function GET(
     searchParams.get("type") || searchParams.get("opportunity_type") || undefined;
   const search = searchParams.get("search") || undefined;
   const requestedRegion = searchParams.get("region") || undefined;
-  // Free users only ever see their signup country; Pro users may switch.
   const region = isPro ? requestedRegion : (user.country ?? undefined);
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
   const perPage = Math.min(
     MAX_PER_PAGE,
     Math.max(1, Number(searchParams.get("perPage")) || DEFAULT_PER_PAGE),
   );
-
-  // Fail closed: a Free account with no stored signup country must not fall
-  // through to an unfiltered global feed.
-  if (!isPro && !region) {
-    return NextResponse.json({
-      items: [],
-      page,
-      perPage,
-      total: 0,
-      hasMore: false,
-      isPro,
-    });
-  }
 
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -203,14 +175,11 @@ export async function GET(
     paramIndex++;
   }
 
-  // Users only see signals from their own signup country.
   if (region) {
     conditions.push(`jurisdiction = $${paramIndex++}`);
     params.push(region);
   }
 
-  // Free users: historical catalog from Jan 1, 2025 through yesterday
-  // (24h embargo on newly ingested signals).
   if (!isPro) {
     conditions.push(
       `published_at >= '${FREE_EMBARGO_START}' AND published_at <= NOW() - INTERVAL '${EMBARGO_HOURS} hours'`,
@@ -220,7 +189,7 @@ export async function GET(
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
   try {
-    require("fs").appendFileSync("/tmp/signals_debug.txt", `where=${where} params=${JSON.stringify(params)} region=${region} isPro=${isPro} user.country=${user.country}\n`);
+    require("fs").appendFileSync("/tmp/signals_debug.txt", `DEBUG: where=${where} params=${JSON.stringify(params)} region=${region} isPro=${isPro} user.country=${user.country} user.id=${user.id}\n`);
   } catch {}
 
   const countResult = await query(
@@ -229,7 +198,7 @@ export async function GET(
   );
   const total = Number(countResult.rows[0]?.count ?? 0);
   try {
-    require("fs").appendFileSync("/tmp/signals_debug.txt", `count=${total} rows=${countResult.rows.length}\n`);
+    require("fs").appendFileSync("/tmp/signals_debug.txt", `DEBUG: count=${total}\n`);
   } catch {}
 
   const offset = (page - 1) * perPage;
