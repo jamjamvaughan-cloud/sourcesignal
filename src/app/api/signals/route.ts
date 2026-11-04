@@ -21,14 +21,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser, getUserPlanId } from "@/lib/auth";
 import { entitlementsFor } from "@/lib/entitlements";
-import { Pool } from "pg";
-
-const DIRECT_POOL = new Pool({
-  connectionString: process.env.DATABASE_URL?.replace(/:6432\//, ":5432/"),
-  max: 20,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 10_000,
-});
+import { query } from "@/lib/db";
 
 /** Maps ingestion `sector` enum values to the controlled taxonomy ids used
  *  by the dashboard (so `sectorLabel()` and client-side filtering work). */
@@ -225,23 +218,17 @@ export async function GET(
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  console.log("SIGNALS_DEBUG: where=", where);
-  console.log("SIGNALS_DEBUG: params=", JSON.stringify(params));
-  console.log("SIGNALS_DEBUG: region=", region);
-  console.log("SIGNALS_DEBUG: isPro=", isPro);
-  console.log("SIGNALS_DEBUG: user.country=", user.country);
-  console.log("SIGNALS_DEBUG: user.id=", user.id);
+  process.stdout.write(`SIGNALS_DEBUG: where=${where} params=${JSON.stringify(params)} region=${region} isPro=${isPro} user.country=${user.country}\n`);
 
-  const countResult = await DIRECT_POOL.query(
+  const countResult = await query(
     `SELECT COUNT(*) FROM signals ${where}`,
     params,
   );
-  console.log("SIGNALS_DEBUG: raw count rows=", JSON.stringify(countResult.rows));
   const total = Number(countResult.rows[0]?.count ?? 0);
-  console.log("SIGNALS_DEBUG: count result=", total);
+  process.stdout.write(`SIGNALS_DEBUG: count=${total} rows=${JSON.stringify(countResult.rows)}\n`);
 
   const offset = (page - 1) * perPage;
-  const dataResult = await DIRECT_POOL.query(
+  const dataResult = await query(
     `SELECT id, title, buyer_name, jurisdiction, sector, opportunity_type,
             estimated_value, source_name, source_url, source_hash,
             sha256_hash, commercial_why, published_at, created_at
