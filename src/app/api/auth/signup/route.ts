@@ -12,7 +12,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { withTransaction } from "@/lib/db";
 import { setSession } from "@/lib/redis";
 import { SESSION_TTL, buildSessionCookie } from "@/lib/auth";
 import { error, info } from "@/lib/logger";
@@ -22,7 +22,7 @@ import { sign } from "jsonwebtoken";
 const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
 
 const SUPPORTED_COUNTRIES = new Set(["UK", "US", "CA", "IE", "AU", "EU"]);
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+$/;
 
 interface SignupBody {
   email?: unknown;
@@ -126,76 +126,76 @@ export async function POST(request: Request) {
     // the (CPU-bound) bcrypt work.
     const passwordHash = await bcrypt.hash(password, 10);
 
-    console.log("SIGNUP_DEBUG: Starting DB operations for", email);
+    const created = await withTransaction(async (client) => {
+      // Check for an existing account first for a friendly error. The unique
+      // index still protects against concurrent signups.
+      const existingUser = await client.query(
+        "SELECT id FROM users WHERE email = $1",
+        [email],
+      );
+      if ((existingUser.rowCount ?? 0) > 0) {
+        return { kind: "exists" as const };
+      }
 
-    // Check for an existing account first for a friendly error.
-    const existingUser = await query(
-      "SELECT id FROM users WHERE email = $1",
-      [email],
-    );
-    console.log("SIGNUP_DEBUG: Existing user check count:", existingUser.rowCount);
-    if ((existingUser.rowCount ?? 0) > 0) {
+      // Persist the country chosen at signup as the user's canonical
+      // jurisdiction. Without this the column falls back to its `{UK}`
+      // default, which locked US/EU signups into UK signals.
+      const userResult = await client.query(
+        `INSERT INTO users (email, password_hash, subscription_tier, country_preferences, created_at, updated_at)
+         VALUES ($1, $2, 'free', $3, NOW(), NOW())
+         RETURNING id, email, subscription_tier`,
+        [email, passwordHash, [country]],
+      );
+      const newUser = userResult.rows[0] as {
+        id: string;
+        email: string;
+        subscription_tier: string;
+      };
+
+      const orgName =
+        orgNameRaw?.trim() || `${email.split("@")[0]}'s Workspace`;
+      const slugBase =
+        orgName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "") || "workspace";
+      const orgSlug = `${slugBase}-${newUser.id.slice(0, 8)}`;
+
+      const orgResult = await client.query(
+        `INSERT INTO organisations (name, slug, plan, country, owner_id, created_by, created_at, updated_at)
+         VALUES ($1, $2, 'free', $3, $4, $4, NOW(), NOW())
+         RETURNING id, name, country`,
+        [orgName, orgSlug, country, newUser.id],
+      );
+      const newOrg = orgResult.rows[0] as {
+        id: string;
+        name: string;
+        country: string;
+      };
+
+      await client.query(
+        `INSERT INTO memberships (user_id, organisation_id, role, created_at, updated_at)
+         VALUES ($1, $2, 'owner', NOW(), NOW())`,
+        [newUser.id, newOrg.id],
+      );
+
+      // Keep the user's primary organisation pointer in sync.
+      await client.query(
+        `UPDATE users SET organisation_id = $1, updated_at = NOW() WHERE id = $2`,
+        [newOrg.id, newUser.id],
+      );
+
+      return { kind: "created" as const, user: newUser, organisation: newOrg };
+    });
+
+    if (created.kind === "exists") {
       return NextResponse.json(
         { error: "An account with this email already exists." },
         { status: 409 },
       );
     }
 
-    // Persist the country chosen at signup as the user's canonical
-    // jurisdiction. Without this the column falls back to its `{UK}`
-    // default, which locked US/EU signups into UK signals.
-    const userResult = await query(
-      `INSERT INTO users (email, password_hash, subscription_tier, country_preferences, created_at, updated_at)
-       VALUES ($1, $2, 'free', $3, NOW(), NOW())
-       RETURNING id, email, subscription_tier`,
-      [email, passwordHash, [country]],
-    );
-    console.log("SIGNUP_DEBUG: User INSERT rowCount:", userResult.rowCount);
-    try {
-      require("fs").appendFileSync("/tmp/signup_debug.txt", `INSERT executed: ${email}\n`);
-    } catch (fsErr) {
-      console.log("SIGNUP_DEBUG: FS write failed:", fsErr.message);
-    }
-    const newUser = userResult.rows[0] as {
-      id: string;
-      email: string;
-      subscription_tier: string;
-    };
-
-    const orgName =
-      orgNameRaw?.trim() || `${email.split("@")[0]}'s Workspace`;
-    const slugBase =
-      orgName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "") || "workspace";
-    const orgSlug = `${slugBase}-${newUser.id.slice(0, 8)}`;
-
-    const orgResult = await query(
-      `INSERT INTO organisations (name, slug, plan, country, owner_id, created_by, created_at, updated_at)
-       VALUES ($1, $2, 'free', $3, $4, $4, NOW(), NOW())
-       RETURNING id, name, country`,
-      [orgName, orgSlug, country, newUser.id],
-    );
-    const newOrg = orgResult.rows[0] as {
-      id: string;
-      name: string;
-      country: string;
-    };
-
-    await query(
-      `INSERT INTO memberships (user_id, organisation_id, role, created_at, updated_at)
-       VALUES ($1, $2, 'owner', NOW(), NOW())`,
-      [newUser.id, newOrg.id],
-    );
-    console.log("SIGNUP_DEBUG: Membership INSERT done");
-
-    // Keep the user's primary organisation pointer in sync.
-    await query(
-      `UPDATE users SET organisation_id = $1, updated_at = NOW() WHERE id = $2`,
-      [newOrg.id, newUser.id],
-    );
-    console.log("SIGNUP_DEBUG: User UPDATE done");
+    const { user: newUser, organisation: newOrg } = created;
 
     // Issue a signed session token and persist it so /api/auth/me resolves
     // this user immediately after signup.
@@ -209,7 +209,6 @@ export async function POST(request: Request) {
       { userId: newUser.id, email: newUser.email },
       SESSION_TTL,
     );
-    console.log("SIGNUP_DEBUG: Session set");
 
     const response = NextResponse.json(
       {
@@ -225,13 +224,6 @@ export async function POST(request: Request) {
       },
       { status: 201 },
     );
-    console.log("SIGNUP_DEBUG: About to return 201 response");
-    info("auth_signup_debug", {
-      message: "About to return 201 response",
-      email,
-      userId: newUser.id,
-      organisationId: newOrg.id,
-    });
     response.headers.set(
       "Set-Cookie",
       buildSessionCookie(token, SESSION_TTL, request.headers.get("host")),
