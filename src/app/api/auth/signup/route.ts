@@ -126,12 +126,14 @@ export async function POST(request: Request) {
     // the (CPU-bound) bcrypt work.
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Check for an existing account first for a friendly error. The unique
-    // index still protects against concurrent signups.
+    console.log("SIGNUP_DEBUG: Starting DB operations for", email);
+
+    // Check for an existing account first for a friendly error.
     const existingUser = await query(
       "SELECT id FROM users WHERE email = $1",
       [email],
     );
+    console.log("SIGNUP_DEBUG: Existing user check count:", existingUser.rowCount);
     if ((existingUser.rowCount ?? 0) > 0) {
       return NextResponse.json(
         { error: "An account with this email already exists." },
@@ -148,6 +150,8 @@ export async function POST(request: Request) {
        RETURNING id, email, subscription_tier`,
       [email, passwordHash, [country]],
     );
+    console.log("SIGNUP_DEBUG: User INSERT rowCount:", userResult.rowCount);
+    console.log("SIGNUP_DEBUG: User INSERT rows:", JSON.stringify(userResult.rows));
     const newUser = userResult.rows[0] as {
       id: string;
       email: string;
@@ -180,12 +184,14 @@ export async function POST(request: Request) {
        VALUES ($1, $2, 'owner', NOW(), NOW())`,
       [newUser.id, newOrg.id],
     );
+    console.log("SIGNUP_DEBUG: Membership INSERT done");
 
     // Keep the user's primary organisation pointer in sync.
     await query(
       `UPDATE users SET organisation_id = $1, updated_at = NOW() WHERE id = $2`,
       [newOrg.id, newUser.id],
     );
+    console.log("SIGNUP_DEBUG: User UPDATE done");
 
     // Issue a signed session token and persist it so /api/auth/me resolves
     // this user immediately after signup.
@@ -199,6 +205,7 @@ export async function POST(request: Request) {
       { userId: newUser.id, email: newUser.email },
       SESSION_TTL,
     );
+    console.log("SIGNUP_DEBUG: Session set");
 
     const response = NextResponse.json(
       {
@@ -214,6 +221,7 @@ export async function POST(request: Request) {
       },
       { status: 201 },
     );
+    console.log("SIGNUP_DEBUG: About to return 201 response");
     info("auth_signup_debug", {
       message: "About to return 201 response",
       email,
