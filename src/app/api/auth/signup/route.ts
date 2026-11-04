@@ -12,7 +12,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { withTransaction } from "@/lib/db";
 import { setSession } from "@/lib/redis";
 import { SESSION_TTL, buildSessionCookie } from "@/lib/auth";
 import { error, info } from "@/lib/logger";
@@ -126,89 +126,76 @@ export async function POST(request: Request) {
     // the (CPU-bound) bcrypt work.
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Debug: log database URL to verify connection
-    info("auth_signup_debug", {
-      message: "Starting signup DB operations",
-      email,
-      databaseUrl: process.env.DATABASE_URL ? "set" : "NOT SET",
+    const created = await withTransaction(async (client) => {
+      // Check for an existing account first for a friendly error. The unique
+      // index still protects against concurrent signups.
+      const existingUser = await client.query(
+        "SELECT id FROM users WHERE email = $1",
+        [email],
+      );
+      if ((existingUser.rowCount ?? 0) > 0) {
+        return { kind: "exists" as const };
+      }
+
+      // Persist the country chosen at signup as the user's canonical
+      // jurisdiction. Without this the column falls back to its `{UK}`
+      // default, which locked US/EU signups into UK signals.
+      const userResult = await client.query(
+        `INSERT INTO users (email, password_hash, subscription_tier, country_preferences, created_at, updated_at)
+         VALUES ($1, $2, 'free', $3, NOW(), NOW())
+         RETURNING id, email, subscription_tier`,
+        [email, passwordHash, [country]],
+      );
+      const newUser = userResult.rows[0] as {
+        id: string;
+        email: string;
+        subscription_tier: string;
+      };
+
+      const orgName =
+        orgNameRaw?.trim() || `${email.split("@")[0]}'s Workspace`;
+      const slugBase =
+        orgName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "") || "workspace";
+      const orgSlug = `${slugBase}-${newUser.id.slice(0, 8)}`;
+
+      const orgResult = await client.query(
+        `INSERT INTO organisations (name, slug, plan, country, owner_id, created_by, created_at, updated_at)
+         VALUES ($1, $2, 'free', $3, $4, $4, NOW(), NOW())
+         RETURNING id, name, country`,
+        [orgName, orgSlug, country, newUser.id],
+      );
+      const newOrg = orgResult.rows[0] as {
+        id: string;
+        name: string;
+        country: string;
+      };
+
+      await client.query(
+        `INSERT INTO memberships (user_id, organisation_id, role, created_at, updated_at)
+         VALUES ($1, $2, 'owner', NOW(), NOW())`,
+        [newUser.id, newOrg.id],
+      );
+
+      // Keep the user's primary organisation pointer in sync.
+      await client.query(
+        `UPDATE users SET organisation_id = $1, updated_at = NOW() WHERE id = $2`,
+        [newOrg.id, newUser.id],
+      );
+
+      return { kind: "created" as const, user: newUser, organisation: newOrg };
     });
 
-    // Check for an existing account first for a friendly error.
-    const existingUser = await query(
-      "SELECT id FROM users WHERE email = $1",
-      [email],
-    );
-    info("auth_signup_debug", {
-      message: "Existing user check",
-      email,
-      existingCount: existingUser.rowCount,
-    });
-    if ((existingUser.rowCount ?? 0) > 0) {
+    if (created.kind === "exists") {
       return NextResponse.json(
         { error: "An account with this email already exists." },
         { status: 409 },
       );
     }
 
-    // Persist the country chosen at signup as the user's canonical
-    // jurisdiction. Without this the column falls back to its `{UK}`
-    // default, which locked US/EU signups into UK signals.
-    const userResult = await query(
-      `INSERT INTO users (email, password_hash, subscription_tier, country_preferences, created_at, updated_at)
-       VALUES ($1, $2, 'free', $3, NOW(), NOW())
-       RETURNING id, email, subscription_tier`,
-      [email, passwordHash, [country]],
-    );
-    info("auth_signup_debug", {
-      message: "User INSERT result",
-      email,
-      rowCount: userResult.rowCount,
-      rows: userResult.rows.map((r: any) => ({ id: r.id, email: r.email })),
-    });
-    const newUser = userResult.rows[0] as {
-      id: string;
-      email: string;
-      subscription_tier: string;
-    };
-
-    const orgName =
-      orgNameRaw?.trim() || `${email.split("@")[0]}'s Workspace`;
-    const slugBase =
-      orgName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "") || "workspace";
-    const orgSlug = `${slugBase}-${newUser.id.slice(0, 8)}`;
-
-    const orgResult = await query(
-      `INSERT INTO organisations (name, slug, plan, country, owner_id, created_by, created_at, updated_at)
-       VALUES ($1, $2, 'free', $3, $4, $4, NOW(), NOW())
-       RETURNING id, name, country`,
-      [orgName, orgSlug, country, newUser.id],
-    );
-    const newOrg = orgResult.rows[0] as {
-      id: string;
-      name: string;
-      country: string;
-    };
-
-    await query(
-      `INSERT INTO memberships (user_id, organisation_id, role, created_at, updated_at)
-       VALUES ($1, $2, 'owner', NOW(), NOW())`,
-      [newUser.id, newOrg.id],
-    );
-    info("auth_signup_debug", {
-      message: "Membership INSERT done",
-      email,
-      userId: newUser.id,
-      organisationId: newOrg.id,
-    });
-
-    // Keep the user's primary organisation pointer in sync.
-    await query(
-      `UPDATE users SET organisation_id = $1, updated_at = NOW() WHERE id = $2`,
-      [newOrg.id, newUser.id],
-    );
+    const { user: newUser, organisation: newOrg } = created;
 
     // Issue a signed session token and persist it so /api/auth/me resolves
     // this user immediately after signup.
