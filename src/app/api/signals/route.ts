@@ -24,7 +24,7 @@ import { Pool } from "pg";
 const POOL = new Pool({
   connectionString: process.env.DATABASE_URL
     ?.replace(/:6432\//, ":5432/")
-    .replace("@pgbouncer:", "@postgres:"),
+    .replace(/@pgbouncer:/, "@postgres:"),
   max: 20,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
