@@ -24,7 +24,7 @@ const appOrigin =
 
 const nextConfig: NextConfig = {
   ...(process.env.VERCEL ? {} : { output: "standalone" }),
-  serverExternalPackages: ["ioredis", "bcryptjs"],
+  serverExternalPackages: ["ioredis", "bcryptjs", "pg", "pg-cloudflare", "pg-connection-string", "pg-pool", "pg-protocol", "pg-types", "pgpass", "split2", "xtend"],
   turbopack: {
     rules: {
       "*.css": {
