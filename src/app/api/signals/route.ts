@@ -193,24 +193,22 @@ export async function GET(
   } catch {}
 
   const countResult = await query(
-    `SELECT COUNT(*) FROM signals ${where}`,
-    params,
+    `SELECT COUNT(*) FROM signals`,
+    [],
   );
   const total = Number(countResult.rows[0]?.count ?? 0);
   try {
-    require("fs").appendFileSync("/tmp/signals_debug.txt", `DEBUG: count=${total}\n`);
+    require("fs").appendFileSync("/tmp/signals_debug.txt", `DEBUG: count=${total} all_signals\n`);
   } catch {}
 
-  const offset = (page - 1) * perPage;
   const dataResult = await query(
     `SELECT id, title, buyer_name, jurisdiction, sector, opportunity_type,
             estimated_value, source_name, source_url, source_hash,
             sha256_hash, commercial_why, published_at, created_at
        FROM signals
-       ${where}
        ORDER BY published_at DESC NULLS LAST, created_at DESC
        LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,
-    [...params, perPage, offset],
+    [perPage, 0],
   );
 
   const items = dataResult.rows.map((row) =>
