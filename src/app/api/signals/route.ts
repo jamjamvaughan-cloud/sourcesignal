@@ -1,4 +1,5 @@
 /**
+console.log("MARKER_SIGNALS_ROUTE_LOADED");
  * Primary signals API.
  *
  * GET /api/signals
@@ -218,14 +219,18 @@ export async function GET(
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  process.stdout.write(`SIGNALS_DEBUG: where=${where} params=${JSON.stringify(params)} region=${region} isPro=${isPro} user.country=${user.country}\n`);
+  try {
+    require("fs").appendFileSync("/tmp/signals_debug.txt", `where=${where} params=${JSON.stringify(params)} region=${region} isPro=${isPro} user.country=${user.country}\n`);
+  } catch {}
 
   const countResult = await query(
     `SELECT COUNT(*) FROM signals ${where}`,
     params,
   );
   const total = Number(countResult.rows[0]?.count ?? 0);
-  process.stdout.write(`SIGNALS_DEBUG: count=${total} rows=${JSON.stringify(countResult.rows)}\n`);
+  try {
+    require("fs").appendFileSync("/tmp/signals_debug.txt", `count=${total} rows=${countResult.rows.length}\n`);
+  } catch {}
 
   const offset = (page - 1) * perPage;
   const dataResult = await query(
