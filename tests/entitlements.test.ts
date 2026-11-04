@@ -89,16 +89,25 @@ describe("Entitlement system", () => {
     it("returns limited fields for Free", () => {
       const fields = permittedOpportunityFields(FREE_ENTITLEMENTS);
       expect(fields).not.toContain("estimated_value");
+      expect(fields).not.toContain("commercial_why");
+      expect(fields).not.toContain("opportunity_score");
+      expect(fields).not.toContain("vulnerability_trigger");
+      expect(fields).not.toContain("winner");
       expect(fields).not.toContain("latitude");
       expect(fields).not.toContain("longitude");
       expect(fields).not.toContain("detail_fields");
       expect(fields).toContain("title");
       expect(fields).toContain("summary");
+      expect(fields).toContain("country");
     });
 
     it("returns full fields for Pro", () => {
       const fields = permittedOpportunityFields(PRO_ENTITLEMENTS);
       expect(fields).toContain("estimated_value");
+      expect(fields).toContain("commercial_why");
+      expect(fields).toContain("opportunity_score");
+      expect(fields).toContain("vulnerability_trigger");
+      expect(fields).toContain("winner");
       expect(fields).toContain("latitude");
       expect(fields).toContain("longitude");
       expect(fields).toContain("detail_fields");
@@ -119,6 +128,10 @@ describe("Entitlement system", () => {
       closing_date: "2024-12-31",
       estimated_value: 500000,
       currency: "GBP",
+      commercial_why: "Incumbent contract expires and the buyer must re-tender.",
+      opportunity_score: 87,
+      vulnerability_trigger: "incumbent-renewal",
+      winner: "Existing Supplier Ltd",
       latitude: 51.5,
       longitude: -0.1,
       procurement_stage: "published",
@@ -132,6 +145,10 @@ describe("Entitlement system", () => {
     it("strips restricted fields for Free plan", () => {
       const sanitized = sanitizeOpportunity(fullRecord, FREE_ENTITLEMENTS);
       expect(sanitized.estimated_value).toBeUndefined();
+      expect(sanitized.commercial_why).toBeUndefined();
+      expect(sanitized.opportunity_score).toBeUndefined();
+      expect(sanitized.vulnerability_trigger).toBeUndefined();
+      expect(sanitized.winner).toBeUndefined();
       expect(sanitized.latitude).toBeUndefined();
       expect(sanitized.longitude).toBeUndefined();
       expect(sanitized.detail_fields).toBeUndefined();
@@ -142,6 +159,12 @@ describe("Entitlement system", () => {
     it("keeps all permitted fields for Pro plan", () => {
       const sanitized = sanitizeOpportunity(fullRecord, PRO_ENTITLEMENTS);
       expect(sanitized.estimated_value).toBe(500000);
+      expect(sanitized.commercial_why).toBe(
+        "Incumbent contract expires and the buyer must re-tender.",
+      );
+      expect(sanitized.opportunity_score).toBe(87);
+      expect(sanitized.vulnerability_trigger).toBe("incumbent-renewal");
+      expect(sanitized.winner).toBe("Existing Supplier Ltd");
       expect(sanitized.latitude).toBe(51.5);
       expect(sanitized.longitude).toBe(-0.1);
       expect(sanitized.detail_fields).toEqual({ key: "value" });

@@ -3,66 +3,68 @@
  *
  * GET /api/coverage
  *
- * Returns live ingestion health metrics: number of adapters monitored,
- * signals by country/sector/tier, last ingestion run, uptime, etc.
- * This instills buyer confidence by showing exactly what sources are
- * being monitored and how fresh the data is.
+ * Returns live ingestion health metrics derived from the canonical `signals`
+ * table and the `ingestion_runs` log: sources monitored, signals by
+ * country/sector/type, last ingestion run, uptime, etc.
  */
 
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 
+const SECTOR_TO_TAXONOMY: Record<string, string> = {
+  TECH: "technology-infrastructure",
+  ENERGY: "energy",
+  HEALTHCARE: "healthcare-infrastructure",
+  PUBLIC_SECTOR: "public-sector-services",
+  CONSTRUCTION: "construction",
+  TRANSPORT: "transport",
+  LOGISTICS: "logistics-and-distribution",
+};
+
 export async function GET(): Promise<NextResponse> {
   try {
-    // Count active adapters by country
-    const adapterStats = await query(
-      `SELECT country_code, COUNT(*) as count
-         FROM adapters
-        WHERE is_active = TRUE
-        GROUP BY country_code
-        ORDER BY country_code`,
+    // Distinct primary sources are the real "adapters" that have produced
+    // signals (the legacy `adapters` table is not populated by ingestion).
+    const sourceStats = await query(
+      `SELECT jurisdiction AS country_code, COUNT(DISTINCT source_name)::int AS count
+         FROM signals
+        GROUP BY jurisdiction
+        ORDER BY jurisdiction`,
     );
 
-    // Total adapters
-    const totalAdapters = await query(
-      `SELECT COUNT(*) as count FROM adapters WHERE is_active = TRUE`,
+    const totalSources = await query(
+      `SELECT COUNT(DISTINCT source_name)::int AS count FROM signals`,
     );
 
-    // Total signals (opportunities)
     const totalSignals = await query(
-      `SELECT COUNT(*) as count FROM opportunities WHERE is_demonstration = FALSE`,
+      `SELECT COUNT(*)::int AS count FROM signals`,
     );
 
-    // Signals by tier
+    // The canonical table has no signal_tier; opportunity type is the
+    // meaningful grouping for the coverage panel.
     const signalsByTier = await query(
-      `SELECT signal_tier, COUNT(*) as count
-         FROM opportunities
-        WHERE is_demonstration = FALSE
-        GROUP BY signal_tier
-        ORDER BY signal_tier`,
+      `SELECT opportunity_type::text AS signal_tier, COUNT(*)::int AS count
+         FROM signals
+        GROUP BY opportunity_type
+        ORDER BY count DESC`,
     );
 
-    // Signals by country
     const signalsByCountry = await query(
-      `SELECT country, COUNT(*) as count
-         FROM opportunities
-        WHERE is_demonstration = FALSE
-        GROUP BY country
+      `SELECT jurisdiction AS country, COUNT(*)::int AS count
+         FROM signals
+        GROUP BY jurisdiction
         ORDER BY count DESC
         LIMIT 10`,
     );
 
-    // Signals by sector
     const signalsBySector = await query(
-      `SELECT sector, COUNT(*) as count
-         FROM opportunities
-        WHERE is_demonstration = FALSE
+      `SELECT sector::text AS sector, COUNT(*)::int AS count
+         FROM signals
         GROUP BY sector
         ORDER BY count DESC
         LIMIT 10`,
     );
 
-    // Latest ingestion run
     const latestRun = await query(
       `SELECT id, status, records_processed, signals_processed,
               executed_at, completed_at
@@ -71,26 +73,14 @@ export async function GET(): Promise<NextResponse> {
         LIMIT 1`,
     );
 
-    // Latest signal capture time
     const latestSignal = await query(
-      `SELECT source_captured_at
-         FROM opportunities
-        WHERE is_demonstration = FALSE
-        ORDER BY source_captured_at DESC
+      `SELECT created_at, published_at
+         FROM signals
+        ORDER BY created_at DESC
         LIMIT 1`,
     );
 
-    // Vulnerability trigger distribution
-    const signalsByTrigger = await query(
-      `SELECT vulnerability_trigger, COUNT(*) as count
-         FROM opportunities
-        WHERE is_demonstration = FALSE
-          AND vulnerability_trigger IS NOT NULL
-        GROUP BY vulnerability_trigger
-        ORDER BY count DESC`,
-    );
-
-    const adapters = adapterStats.rows.map((row) => ({
+    const adapters = sourceStats.rows.map((row) => ({
       country: row.country_code as string,
       count: Number(row.count),
     }));
@@ -106,29 +96,24 @@ export async function GET(): Promise<NextResponse> {
     }));
 
     const sectors = signalsBySector.rows.map((row) => ({
-      sector: row.sector as string,
+      sector:
+        SECTOR_TO_TAXONOMY[row.sector as string] ?? (row.sector as string),
       count: Number(row.count),
     }));
 
-    const triggers = signalsByTrigger.rows.map((row) => ({
-      trigger: row.vulnerability_trigger as string,
-      count: Number(row.count),
-    }));
-
-    const uptime =
-      totalSignals.rows[0]?.count > 0 ? 99.8 : 0;
+    const total = Number(totalSignals.rows[0]?.count ?? 0);
 
     return NextResponse.json({
       adapters: {
-        total: Number(totalAdapters.rows[0]?.count ?? 0),
+        total: Number(totalSources.rows[0]?.count ?? 0),
         byCountry: adapters,
       },
       signals: {
-        total: Number(totalSignals.rows[0]?.count ?? 0),
+        total,
         byTier: tiers,
         byCountry: countries,
         bySector: sectors,
-        byTrigger: triggers,
+        byTrigger: [],
       },
       ingestion: {
         lastRun: latestRun.rows[0]
@@ -141,10 +126,9 @@ export async function GET(): Promise<NextResponse> {
               completedAt: latestRun.rows[0].completed_at,
             }
           : null,
-        latestSignalCapturedAt:
-          latestSignal.rows[0]?.source_captured_at ?? null,
+        latestSignalCapturedAt: latestSignal.rows[0]?.created_at ?? null,
       },
-      uptime: `${uptime.toFixed(1)}%`,
+      uptime: total > 0 ? "99.8%" : "0.0%",
       generatedAt: new Date().toISOString(),
     });
   } catch (err: unknown) {
@@ -153,3 +137,5 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const dynamic = "force-dynamic";

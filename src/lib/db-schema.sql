@@ -101,10 +101,12 @@ CREATE TABLE IF NOT EXISTS opportunities (
 );
 
 -- 6. Saved Opportunities Table
+-- `opportunity_id` references the canonical `signals` table. The foreign key
+-- is added after `signals` is created (see the migration near that table).
 CREATE TABLE IF NOT EXISTS saved_opportunities (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    opportunity_id UUID REFERENCES opportunities(id) ON DELETE CASCADE,
+    opportunity_id UUID,
     notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT unique_user_opportunity UNIQUE (user_id, opportunity_id)
@@ -125,7 +127,9 @@ CREATE TABLE IF NOT EXISTS alerts (
 CREATE TABLE IF NOT EXISTS alert_deliveries (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     alert_id UUID REFERENCES alerts(id) ON DELETE CASCADE,
-    opportunity_id UUID REFERENCES opportunities(id) ON DELETE CASCADE,
+    -- `opportunity_id` references the canonical `signals` table. The foreign
+    -- key is (re)pointed after `signals` is created, near that table.
+    opportunity_id UUID,
     status VARCHAR(50) DEFAULT 'pending' NOT NULL,
     provider VARCHAR(100),
     external_id VARCHAR(255),
@@ -566,6 +570,57 @@ DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'signals_sha256_hash_key') THEN
         ALTER TABLE signals ADD CONSTRAINT signals_sha256_hash_key UNIQUE (sha256_hash);
+    END IF;
+END $$;
+
+-- Repoint saved_opportunities at the canonical signals table.
+-- The legacy `opportunities` table is no longer written by the ingestion
+-- engine, so saved rows must reference `signals` for FK integrity.
+DELETE FROM saved_opportunities so
+ WHERE NOT EXISTS (SELECT 1 FROM signals s WHERE s.id = so.opportunity_id);
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'saved_opportunities_opportunity_id_fkey'
+    ) THEN
+        ALTER TABLE saved_opportunities
+            DROP CONSTRAINT saved_opportunities_opportunity_id_fkey;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'saved_opportunities_signal_fkey'
+    ) THEN
+        ALTER TABLE saved_opportunities
+            ADD CONSTRAINT saved_opportunities_signal_fkey
+            FOREIGN KEY (opportunity_id) REFERENCES signals(id) ON DELETE CASCADE;
+    END IF;
+END $$;
+
+-- Repoint alert deliveries at the canonical signals table as well.
+DELETE FROM alert_deliveries d
+ WHERE d.opportunity_id IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM signals s WHERE s.id = d.opportunity_id);
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'alert_deliveries_opportunity_id_fkey'
+    ) THEN
+        ALTER TABLE alert_deliveries
+            DROP CONSTRAINT alert_deliveries_opportunity_id_fkey;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'alert_deliveries_signal_fkey'
+    ) THEN
+        ALTER TABLE alert_deliveries
+            ADD CONSTRAINT alert_deliveries_signal_fkey
+            FOREIGN KEY (opportunity_id) REFERENCES signals(id) ON DELETE CASCADE;
     END IF;
 END $$;
 

@@ -101,6 +101,7 @@ export function permittedOpportunityFields(
     "buyer",
     "sector",
     "region",
+    "country",
     "location",
     "published_date",
     "closing_date",
@@ -112,12 +113,8 @@ export function permittedOpportunityFields(
     "confidence",
     "signal_tier",
     "opportunity_type",
-    "opportunity_score",
-    "commercial_why",
     "sub_category",
     "supplier_capabilities",
-    "vulnerability_trigger",
-    "winner",
     "created_at",
     "updated_at",
     "is_demonstration",
@@ -125,8 +122,15 @@ export function permittedOpportunityFields(
   if (entitlements.fullDetailsEnabled) {
     return [
       ...base,
+      // Pro-only telemetry. Free users must never receive these fields:
+      // no valuation, no commercial rationale, no score, no incumbent /
+      // trigger intelligence.
       "estimated_value",
       "currency",
+      "opportunity_score",
+      "commercial_why",
+      "vulnerability_trigger",
+      "winner",
       "latitude",
       "longitude",
       "detail_fields",

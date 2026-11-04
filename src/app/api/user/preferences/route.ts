@@ -13,7 +13,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getUserPlanId } from "@/lib/auth";
+import { entitlementsFor } from "@/lib/entitlements";
 import { error, info } from "@/lib/logger";
 import {
   isValidSector,
@@ -88,6 +89,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
+    // Free users are locked to the country chosen at signup. Industry and
+    // sub-category preferences remain editable, but the jurisdiction cannot
+    // be switched without a Pro subscription (global jurisdiction switching
+    // is a Pro feature). This prevents the country lock from being bypassed
+    // by writing a new preference and then re-reading the feed.
+    const planId = await getUserPlanId(user.id);
+    const entitlements = entitlementsFor(planId);
+
+    let effectiveCountryPreferences = countryPreferences;
+    if (!entitlements.fullDetailsEnabled) {
+      const current = await query(
+        `SELECT country_preferences FROM users WHERE id = $1`,
+        [user.id],
+      );
+      const existing = current.rows[0]?.country_preferences;
+      const signupCountry =
+        Array.isArray(existing) && typeof existing[0] === "string"
+          ? existing[0]
+          : countryPreferences[0];
+      effectiveCountryPreferences = signupCountry ? [signupCountry] : [];
+    }
+
     await query(
       `UPDATE users
         SET country_preferences = $1,
@@ -96,7 +119,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             updated_at = NOW()
         WHERE id = $4`,
       [
-        countryPreferences,
+        effectiveCountryPreferences,
         industryPreferences,
         subCategoryPreferences,
         user.id,
@@ -105,14 +128,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     info("user_preferences_updated", {
       userId: user.id,
-      countryPreferences,
+      planId,
+      countryPreferences: effectiveCountryPreferences,
       industryPreferences,
       subCategoryPreferences,
     });
 
     return NextResponse.json({
       success: true,
-      countryPreferences,
+      countryPreferences: effectiveCountryPreferences,
       industryPreferences,
       subCategoryPreferences,
     });

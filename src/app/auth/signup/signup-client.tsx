@@ -18,6 +18,7 @@ export default function SignUpPageClient() {
   const [password, setPassword] = React.useState("");
   const [passwordConfirm, setPasswordConfirm] = React.useState("");
   const [organisationName, setOrganisationName] = React.useState("");
+  const [country, setCountry] = React.useState("UK");
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
@@ -36,6 +37,7 @@ export default function SignUpPageClient() {
           password,
           passwordConfirm,
           organisationName: organisationName || undefined,
+          country,
         }),
       });
 
@@ -156,6 +158,28 @@ export default function SignUpPageClient() {
               <p className="text-[10px] text-[#94A3B8]">
                 Your organisation starts on the Free tier. All sectors are
                 available; Pro adds full details, exports and the map.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="country" className="text-xs font-mono tracking-[0.2em] text-[#94A3B8] uppercase block mb-1">
+                Country
+              </Label>
+              <select
+                id="country"
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                required
+                className="ghost-input h-10 w-full text-xs px-3"
+              >
+                <option value="UK">United Kingdom</option>
+                <option value="US">United States</option>
+                <option value="CA">Canada</option>
+                <option value="IE">Ireland</option>
+                <option value="AU">Australia</option>
+                <option value="EU">European Union</option>
+              </select>
+              <p className="text-[10px] text-[#94A3B8]">
+                Your Free plan shows historical signals for this country only.
               </p>
             </div>
             <Button type="submit" disabled={loading} className="w-full h-10 btn-ghost-primary text-xs font-bold tracking-[0.15em] uppercase hover:text-black hover:bg-white">

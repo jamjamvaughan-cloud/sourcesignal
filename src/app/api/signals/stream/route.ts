@@ -14,7 +14,7 @@
  * Uses text/event-stream content type.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { query } from "@/lib/db";
 import { getCurrentUser, getUserPlanId } from "@/lib/auth";
@@ -91,9 +91,10 @@ function sanitizeSignalForUser(
   };
 }
 
-export async function GET(): Promise<NextResponse> {
-  // Authenticate the request. Any authenticated user can access the stream;
-  // Free users get redacted telemetry, Pro users get full telemetry.
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  // Authenticate the request. Zero-delay streaming is a Pro/Enterprise
+  // capability: Free users receive the historical feed via /api/signals,
+  // never embargoed real-time events.
   const auth = await requireAuth();
   if (!auth) {
     return NextResponse.json(
@@ -102,7 +103,20 @@ export async function GET(): Promise<NextResponse> {
     );
   }
 
-  const { userId, country, entitlements, isPro } = auth;
+  const { userId, isPro } = auth;
+  if (!isPro) {
+    return NextResponse.json(
+      { error: "Real-time streaming requires a Pro subscription." },
+      { status: 403 },
+    );
+  }
+
+  const requestedRegion =
+    request.nextUrl.searchParams.get("region")?.trim().toUpperCase() ?? null;
+  const region =
+    requestedRegion && ["UK", "US", "EU"].includes(requestedRegion)
+      ? requestedRegion
+      : null;
 
   const encoder = new TextEncoder();
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -116,7 +130,7 @@ export async function GET(): Promise<NextResponse> {
       info("sse_stream", {
         message: "SSE client connected",
         userId,
-        country,
+        region,
         isPro,
         totalClients: clients.size,
       });
@@ -133,10 +147,15 @@ export async function GET(): Promise<NextResponse> {
           const params: unknown[] = [];
           let paramIndex = 1;
 
-          // Free users only see signals from their signup country.
-          if (!isPro && country) {
+          // Every streamed signal must be newer than the last event we sent.
+          conditions.push(`created_at > $${paramIndex++}`);
+          params.push(lastSeen.toISOString());
+
+          // Pro users may stream globally; an explicit `region` query param
+          // scopes the stream to the selected jurisdiction.
+          if (region) {
             conditions.push(`jurisdiction = $${paramIndex++}`);
-            params.push(country);
+            params.push(region);
           }
 
           const result = await query(
@@ -145,11 +164,10 @@ export async function GET(): Promise<NextResponse> {
                     source_hash, sha256_hash, commercial_why, published_at,
                     created_at
                FROM signals
-               ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
-               AND created_at > $${paramIndex++}
-               ORDER BY created_at ASC
-               LIMIT 50`,
-            [...params, lastSeen.toISOString()],
+              WHERE ${conditions.join(" AND ")}
+              ORDER BY created_at ASC
+              LIMIT 50`,
+            params,
           );
 
           if ((result.rowCount ?? 0) === 0) {

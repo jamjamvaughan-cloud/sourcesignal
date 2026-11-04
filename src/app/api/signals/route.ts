@@ -35,8 +35,31 @@ const SECTOR_TO_TAXONOMY: Record<string, string> = {
   LOGISTICS: "logistics-and-distribution",
 };
 
+/** Dashboard taxonomy id → ingestion enum (for SQL filtering). */
+const TAXONOMY_TO_SECTOR: Record<string, string> = Object.fromEntries(
+  Object.entries(SECTOR_TO_TAXONOMY).map(([enumValue, taxonomy]) => [
+    taxonomy,
+    enumValue,
+  ]),
+);
+
+const SIGNAL_SECTORS = new Set(Object.keys(SECTOR_TO_TAXONOMY));
+
 const DEFAULT_PER_PAGE = 50;
 const MAX_PER_PAGE = 100;
+
+function currencyForJurisdiction(jurisdiction: string | null): string | null {
+  switch ((jurisdiction ?? "").toUpperCase()) {
+    case "UK":
+      return "GBP";
+    case "US":
+      return "USD";
+    case "EU":
+      return "EUR";
+    default:
+      return null;
+  }
+}
 
 /** Free users see signals from Jan 1, 2025 through yesterday (24h embargo). */
 const FREE_EMBARGO_START = "2025-01-01";
@@ -80,7 +103,9 @@ function toSignalRecord(row: SignalRow, entitlements: ReturnType<typeof entitlem
           Number.isFinite(Number(row.estimated_value))))
         ? Number(row.estimated_value)
         : null,
-    currency: null,
+    currency: entitlements.fullDetailsEnabled
+      ? currencyForJurisdiction(row.jurisdiction)
+      : null,
     procurement_stage: null,
     published_date: row.published_at,
     closing_date: null,
@@ -127,24 +152,47 @@ export async function GET(
   const type =
     searchParams.get("type") || searchParams.get("opportunity_type") || undefined;
   const search = searchParams.get("search") || undefined;
-  const region = searchParams.get("region") || undefined;
+  const requestedRegion = searchParams.get("region") || undefined;
+  // Free users only ever see their signup country; Pro users may switch.
+  const region = isPro ? requestedRegion : (user.country ?? undefined);
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
   const perPage = Math.min(
     MAX_PER_PAGE,
     Math.max(1, Number(searchParams.get("perPage")) || DEFAULT_PER_PAGE),
   );
 
+  // Fail closed: a Free account with no stored signup country must not fall
+  // through to an unfiltered global feed.
+  if (!isPro && !region) {
+    return NextResponse.json({
+      items: [],
+      page,
+      perPage,
+      total: 0,
+      hasMore: false,
+      isPro,
+    });
+  }
+
   const conditions: string[] = [];
   const params: unknown[] = [];
   let paramIndex = 1;
 
   if (sector) {
-    conditions.push(`sector = $${paramIndex++}`);
-    params.push(sector);
+    const enumValue =
+      TAXONOMY_TO_SECTOR[sector] ??
+      (SIGNAL_SECTORS.has(sector.toUpperCase()) ? sector.toUpperCase() : null);
+    if (enumValue) {
+      conditions.push(`sector = $${paramIndex++}::signal_sector`);
+      params.push(enumValue);
+    }
   }
   if (type) {
-    conditions.push(`opportunity_type = $${paramIndex++}`);
-    params.push(type);
+    const normalisedType = type.trim().toUpperCase();
+    if (normalisedType) {
+      conditions.push(`opportunity_type = $${paramIndex++}::signal_opportunity_type`);
+      params.push(normalisedType);
+    }
   }
   if (search) {
     conditions.push(
@@ -180,7 +228,7 @@ export async function GET(
   const dataResult = await query(
     `SELECT id, title, buyer_name, jurisdiction, sector, opportunity_type,
             estimated_value, source_name, source_url, source_hash,
-            commercial_why, published_at, created_at
+            sha256_hash, commercial_why, published_at, created_at
        FROM signals
        ${where}
        ORDER BY published_at DESC NULLS LAST, created_at DESC

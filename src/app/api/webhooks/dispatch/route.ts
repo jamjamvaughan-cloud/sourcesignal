@@ -90,9 +90,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     // Fetch the opportunity to dispatch.
     const opportunityResult = await query(
-      `SELECT id, title, buyer, sector, region, closing_date,
-              estimated_value, currency, source_url
-         FROM opportunities
+      `SELECT id, title, buyer_name AS buyer, sector::text AS sector,
+              jurisdiction AS region, NULL::timestamptz AS closing_date,
+              estimated_value,
+              CASE jurisdiction
+                WHEN 'US' THEN 'USD'
+                WHEN 'EU' THEN 'EUR'
+                ELSE 'GBP'
+              END AS currency,
+              source_url
+         FROM signals
         WHERE id = $1`,
       [opportunityId],
     );

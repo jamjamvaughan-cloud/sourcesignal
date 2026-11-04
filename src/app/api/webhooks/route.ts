@@ -10,7 +10,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getUserPlanId } from "@/lib/auth";
+import { entitlementsFor } from "@/lib/entitlements";
 import { query } from "@/lib/db";
 import { isSafeDispatchUrl } from "@/lib/webhooks";
 import { error, info } from "@/lib/logger";
@@ -21,6 +22,17 @@ async function requireUser(request: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
+
+  // Outbound webhooks are part of the Pro/Enterprise alerting feature.
+  const planId = await getUserPlanId(user.id);
+  const entitlements = entitlementsFor(planId);
+  if (!entitlements.alertsEnabled) {
+    return NextResponse.json(
+      { error: "Webhooks require a Pro subscription." },
+      { status: 403 },
+    );
+  }
+
   return { userId: user.id };
 }
 

@@ -87,8 +87,16 @@ export async function dispatchWebhook({
 
   try {
     const result = await query(
-      `SELECT id, title, buyer, sector, region, closing_date, estimated_value, currency, source_url
-       FROM opportunities WHERE id = $1`,
+      `SELECT id, title, buyer_name AS buyer, sector::text AS sector,
+              jurisdiction AS region, NULL::timestamptz AS closing_date,
+              estimated_value,
+              CASE jurisdiction
+                WHEN 'US' THEN 'USD'
+                WHEN 'EU' THEN 'EUR'
+                ELSE 'GBP'
+              END AS currency,
+              source_url
+       FROM signals WHERE id = $1`,
       [opportunityId],
     );
 
@@ -218,8 +226,16 @@ export async function dispatchWebhookForOpportunity({
 }> {
   try {
     const result = await query(
-      `SELECT id, title, buyer, sector, region, closing_date, estimated_value, currency, source_url, signal_tier
-       FROM opportunities WHERE id = $1`,
+      `SELECT id, title, buyer_name AS buyer, sector::text AS sector,
+              jurisdiction AS region, NULL::timestamptz AS closing_date,
+              estimated_value,
+              CASE jurisdiction
+                WHEN 'US' THEN 'USD'
+                WHEN 'EU' THEN 'EUR'
+                ELSE 'GBP'
+              END AS currency,
+              source_url, NULL::text AS signal_tier
+       FROM signals WHERE id = $1`,
       [opportunityId],
     );
 

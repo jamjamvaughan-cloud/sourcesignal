@@ -137,11 +137,14 @@ export async function POST(request: Request) {
         return { kind: "exists" as const };
       }
 
+      // Persist the country chosen at signup as the user's canonical
+      // jurisdiction. Without this the column falls back to its `{UK}`
+      // default, which locked US/EU signups into UK signals.
       const userResult = await client.query(
-        `INSERT INTO users (email, password_hash, subscription_tier, created_at, updated_at)
-         VALUES ($1, $2, 'free', NOW(), NOW())
+        `INSERT INTO users (email, password_hash, subscription_tier, country_preferences, created_at, updated_at)
+         VALUES ($1, $2, 'free', $3, NOW(), NOW())
          RETURNING id, email, subscription_tier`,
-        [email, passwordHash],
+        [email, passwordHash, [country]],
       );
       const newUser = userResult.rows[0] as {
         id: string;
@@ -223,7 +226,7 @@ export async function POST(request: Request) {
     );
     response.headers.set(
       "Set-Cookie",
-      buildSessionCookie(token, SESSION_TTL),
+      buildSessionCookie(token, SESSION_TTL, request.headers.get("host")),
     );
 
     info("auth_signup", {

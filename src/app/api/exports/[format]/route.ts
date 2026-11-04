@@ -18,6 +18,17 @@ import { error } from "@/lib/logger";
 
 const MAX_EXPORT_ROWS = 1000;
 
+/** Dashboard taxonomy id → ingestion `signal_sector` enum. */
+const TAXONOMY_TO_SECTOR: Record<string, string> = {
+  "technology-infrastructure": "TECH",
+  energy: "ENERGY",
+  "healthcare-infrastructure": "HEALTHCARE",
+  "public-sector-services": "PUBLIC_SECTOR",
+  construction: "CONSTRUCTION",
+  transport: "TRANSPORT",
+  "logistics-and-distribution": "LOGISTICS",
+};
+
 async function requirePro(
   request: NextRequest,
 ): Promise<
@@ -98,25 +109,64 @@ export async function GET(
     );
   }
 
-  const conditions = ["is_demonstration = FALSE"];
+  const conditions: string[] = [];
   const values: unknown[] = [];
 
   if (sector) {
-    values.push(sector);
-    conditions.push(`sector = $${values.length}`);
+    const enumValue = TAXONOMY_TO_SECTOR[sector] ?? sector.toUpperCase();
+    values.push(enumValue);
+    conditions.push(`sector = $${values.length}::signal_sector`);
   }
   if (region) {
-    values.push(region);
-    conditions.push(`region = $${values.length}`);
+    values.push(region.toUpperCase());
+    conditions.push(`jurisdiction = $${values.length}`);
   }
   values.push(limit);
 
   try {
+    // Project the canonical `signals` row into the legacy opportunity field
+    // names consumed by the export contract.
     const records = await query(
-      `SELECT *
-         FROM opportunities
-        WHERE ${conditions.join(" AND ")}
-        ORDER BY COALESCE(published_date, created_at) DESC
+      `SELECT id,
+              id AS canonical_id,
+              title,
+              commercial_why AS summary,
+              buyer_name AS buyer,
+              sector::text AS sector,
+              jurisdiction AS region,
+              jurisdiction AS country,
+              NULL AS location,
+              published_at AS published_date,
+              NULL AS closing_date,
+              NULL AS procurement_stage,
+              source_url,
+              source_name,
+              source_hash,
+              created_at AS source_captured_at,
+              NULL AS confidence,
+              NULL AS signal_tier,
+              opportunity_type::text AS opportunity_type,
+              NULL AS sub_category,
+              NULL AS supplier_capabilities,
+              created_at,
+              created_at AS updated_at,
+              FALSE AS is_demonstration,
+              estimated_value,
+              CASE jurisdiction
+                WHEN 'US' THEN 'USD'
+                WHEN 'EU' THEN 'EUR'
+                ELSE 'GBP'
+              END AS currency,
+              NULL AS opportunity_score,
+              commercial_why,
+              NULL AS vulnerability_trigger,
+              NULL AS winner,
+              NULL AS latitude,
+              NULL AS longitude,
+              NULL AS detail_fields
+         FROM signals
+        ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
+        ORDER BY COALESCE(published_at, created_at) DESC
         LIMIT $${values.length}`,
       values,
     );

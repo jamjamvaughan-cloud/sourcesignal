@@ -33,29 +33,34 @@ export async function GET(
     Math.max(1, Number(searchParams.get("perPage")) || DEFAULT_PER_PAGE),
   );
 
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-  let paramIndex = 1;
+  const conditions: string[] = ["w.user_id = $1"];
+  const params: unknown[] = [user.id];
+  let paramIndex = 2;
 
   if (webhookId) {
-    conditions.push(`webhook_id = $${paramIndex++}`);
+    conditions.push(`l.webhook_id = $${paramIndex++}`);
     params.push(webhookId);
   }
 
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const where = `WHERE ${conditions.join(" AND ")}`;
 
   const countResult = await query(
-    `SELECT COUNT(*) FROM alert_logs ${where}`,
+    `SELECT COUNT(*)
+       FROM alert_logs l
+       JOIN webhooks w ON w.id = l.webhook_id
+       ${where}`,
     params,
   );
   const total = Number(countResult.rows[0]?.count ?? 0);
 
   const offset = (page - 1) * perPage;
   const dataResult = await query(
-    `SELECT id, webhook_id, signal_id, status, response_status_code, attempted_at
-       FROM alert_logs
+    `SELECT l.id, l.webhook_id, l.signal_id, l.status,
+            l.response_status_code, l.attempted_at
+       FROM alert_logs l
+       JOIN webhooks w ON w.id = l.webhook_id
        ${where}
-       ORDER BY attempted_at DESC
+       ORDER BY l.attempted_at DESC
        LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,
     [...params, perPage, offset],
   );

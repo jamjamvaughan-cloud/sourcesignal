@@ -31,6 +31,17 @@ interface OpportunityRow {
   region: string | null;
 }
 
+/** Ingestion `signal_sector` enum → dashboard taxonomy id used by alerts. */
+const SECTOR_TO_TAXONOMY: Record<string, string> = {
+  TECH: "technology-infrastructure",
+  ENERGY: "energy",
+  HEALTHCARE: "healthcare-infrastructure",
+  PUBLIC_SECTOR: "public-sector-services",
+  CONSTRUCTION: "construction",
+  TRANSPORT: "transport",
+  LOGISTICS: "logistics-and-distribution",
+};
+
 export async function POST(): Promise<NextResponse> {
   try {
     const alertResult = await query(
@@ -51,10 +62,10 @@ export async function POST(): Promise<NextResponse> {
     }
 
     const opportunityResult = await query(
-      `SELECT id, title, summary, sector, region
-         FROM opportunities
-        WHERE updated_at >= NOW() - INTERVAL '24 hours'
-          AND is_demonstration = FALSE`,
+      `SELECT id, title, commercial_why AS summary,
+              sector::text AS sector, jurisdiction AS region
+         FROM signals
+        WHERE created_at >= NOW() - INTERVAL '24 hours'`,
     );
     const opportunities = opportunityResult.rows as OpportunityRow[];
 
@@ -77,10 +88,12 @@ export async function POST(): Promise<NextResponse> {
         .filter(Boolean);
 
       for (const opportunity of opportunities) {
+        const sectorId = opportunity.sector
+          ? SECTOR_TO_TAXONOMY[opportunity.sector] ?? opportunity.sector
+          : null;
         if (
           filters.sectors.length > 0 &&
-          (!opportunity.sector ||
-            !filters.sectors.includes(opportunity.sector))
+          (!sectorId || !filters.sectors.includes(sectorId))
         ) {
           continue;
         }

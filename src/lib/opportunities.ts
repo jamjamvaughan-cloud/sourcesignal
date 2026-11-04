@@ -1,20 +1,20 @@
 /**
  * Server-side opportunity service.
  *
- * All opportunity reads/writes go through this boundary. It uses the
- * PostgreSQL admin client (server-side only) and applies entitlement-based field
- * sanitization before returning data to the client.
+ * The canonical datastore for ingested commercial signals is the `signals`
+ * table (populated by the ingestion engine). This module exposes those rows
+ * through the legacy "opportunity" shape used by the dashboard and previews,
+ * applying entitlement sanitisation before anything leaves the server.
+ *
+ * The old `opportunities` table is retained for backwards compatibility but is
+ * no longer the read path for the product UI.
  */
 
 import { query } from "@/lib/db";
 import {
-  entitlementsFor,
   sanitizeOpportunity,
   type Entitlements,
 } from "@/lib/entitlements";
-import { isValidSectorId, isValidRegion } from "@/lib/config";
-import { createHash } from "crypto";
-import { isValidSector } from "@/lib/taxonomy";
 
 export interface OpportunityFilters {
   sector?: string;
@@ -25,10 +25,8 @@ export interface OpportunityFilters {
   page?: number;
   perPage?: number;
   sort?: string;
-  // User preferences for filtering
-  userCountryPreferences?: string[];
-  userIndustryPreferences?: string[];
-  userSubCategoryPreferences?: string[];
+  /** When set, restrict results to this jurisdiction (Free-tier country lock). */
+  jurisdiction?: string;
 }
 
 export interface OpportunityListResult {
@@ -42,26 +40,112 @@ export interface OpportunityListResult {
 const MAX_PER_PAGE = 100;
 const DEFAULT_PER_PAGE = 25;
 
-const COUNTRY_REGIONS: Record<string, string[]> = {
-  UK: ["ENG", "SCT", "WLS", "NIR"],
-  US: ["US"],
-  CA: ["CA"],
-  IE: ["IE"],
-  AU: ["AU"],
-  EU: ["EU"],
+/** Ingestion enum → dashboard taxonomy id. */
+const SECTOR_ENUM_TO_TAXONOMY: Record<string, string> = {
+  TECH: "technology-infrastructure",
+  ENERGY: "energy",
+  HEALTHCARE: "healthcare-infrastructure",
+  PUBLIC_SECTOR: "public-sector-services",
+  CONSTRUCTION: "construction",
+  TRANSPORT: "transport",
+  LOGISTICS: "logistics-and-distribution",
 };
 
-const VALID_STAGES = [
-  "planned",
-  "published",
-  "evaluation",
-  "awarded",
-  "cancelled",
-  "expired",
-];
+/** Dashboard taxonomy id → ingestion enum (for SQL filtering). */
+const SECTOR_TAXONOMY_TO_ENUM: Record<string, string> = Object.fromEntries(
+  Object.entries(SECTOR_ENUM_TO_TAXONOMY).map(([enumValue, taxonomy]) => [
+    taxonomy,
+    enumValue,
+  ]),
+);
 
-function escapeSqlFilter(value: string): string {
-  return value.replace(/'/g, "''");
+const SIGNAL_SECTORS = new Set(Object.keys(SECTOR_ENUM_TO_TAXONOMY));
+const JURISDICTIONS = new Set(["UK", "US", "EU"]);
+
+const FREE_EMBARGO_START = "2025-01-01";
+const EMBARGO_HOURS = 24;
+
+interface SignalRow {
+  id: string;
+  title: string | null;
+  buyer_name: string | null;
+  jurisdiction: string | null;
+  sector: string | null;
+  opportunity_type: string | null;
+  estimated_value: unknown;
+  source_name: string | null;
+  source_url: string | null;
+  source_hash: string | null;
+  sha256_hash: string | null;
+  commercial_why: string | null;
+  published_at: string | null;
+  created_at: string | null;
+}
+
+function currencyForJurisdiction(jurisdiction: string | null): string | null {
+  switch ((jurisdiction ?? "").toUpperCase()) {
+    case "UK":
+      return "GBP";
+    case "US":
+      return "USD";
+    case "EU":
+      return "EUR";
+    default:
+      return null;
+  }
+}
+
+/**
+ * Maps a `signals` row into the legacy opportunity shape and strips any
+ * fields the caller's plan is not entitled to.
+ */
+function toOpportunity(
+  row: SignalRow,
+  entitlements: Entitlements,
+): Record<string, unknown> {
+  const hasFullDetails = entitlements.fullDetailsEnabled;
+  const numericValue = Number(row.estimated_value);
+  const estimatedValue =
+    hasFullDetails && Number.isFinite(numericValue) && numericValue > 0
+      ? numericValue
+      : null;
+
+  const record: Record<string, unknown> = {
+    id: row.id,
+    canonical_id: row.id,
+    title: row.title ?? row.buyer_name ?? "Untitled signal",
+    summary: hasFullDetails ? (row.commercial_why ?? null) : null,
+    buyer: row.buyer_name ?? null,
+    country: row.jurisdiction ?? null,
+    region: row.jurisdiction ?? null,
+    location: null,
+    sector:
+      (row.sector && SECTOR_ENUM_TO_TAXONOMY[row.sector]) ?? row.sector ?? null,
+    signal_tier: null,
+    estimated_value: estimatedValue,
+    currency: estimatedValue != null ? currencyForJurisdiction(row.jurisdiction) : null,
+    procurement_stage: null,
+    published_date: row.published_at ?? null,
+    closing_date: null,
+    confidence: null,
+    source_url: row.source_url ?? null,
+    source_name: row.source_name ?? null,
+    source_captured_at: row.created_at ?? null,
+    source_hash: row.source_hash ?? null,
+    sha256_hash: row.sha256_hash ?? null,
+    is_demonstration: false,
+    created_at: row.created_at ?? null,
+    updated_at: null,
+    vulnerability_trigger: null,
+    winner: null,
+    sub_category: null,
+    opportunity_type: row.opportunity_type ?? null,
+    opportunity_score: null,
+    commercial_why: hasFullDetails ? (row.commercial_why ?? null) : null,
+    supplier_capabilities: [],
+  };
+
+  return sanitizeOpportunity(record, entitlements);
 }
 
 export async function listOpportunities(
@@ -74,169 +158,125 @@ export async function listOpportunities(
     Math.max(1, filters.perPage ?? DEFAULT_PER_PAGE),
   );
 
-  const filterParts: string[] = [];
+  const hasFullDetails = entitlements.fullDetailsEnabled;
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  let paramIndex = 1;
 
-  // Only non-demonstration records are live intelligence; demonstration
-  // records are clearly marked and excluded from default browsing.
-  filterParts.push("is_demonstration = false");
-
-  // Apply user preference filters if provided.
-  // These narrow results to the user's saved countries and industries.
-  if (
-    filters.userCountryPreferences &&
-    filters.userCountryPreferences.length > 0
-  ) {
-    const validCountries = filters.userCountryPreferences.filter((c) =>
-      ["UK", "US", "CA", "IE", "AU", "EU"].includes(c),
+  // Free-tier country lock and embargo are applied here as well as in the
+  // route handler so no caller can bypass them.
+  if (!hasFullDetails) {
+    conditions.push(
+      `published_at >= '${FREE_EMBARGO_START}' AND published_at <= NOW() - INTERVAL '${EMBARGO_HOURS} hours'`,
     );
-    if (validCountries.length > 0) {
-      const countryFilter = validCountries
-        .map((c) => `country = '${escapeSqlFilter(c)}'`)
-        .join(" OR ");
-      filterParts.push(`(${countryFilter})`);
+  }
+
+  const jurisdiction = filters.jurisdiction?.trim().toUpperCase();
+  if (jurisdiction && JURISDICTIONS.has(jurisdiction)) {
+    conditions.push(`jurisdiction = $${paramIndex++}`);
+    params.push(jurisdiction);
+  } else if (filters.country) {
+    const country = filters.country.trim().toUpperCase();
+    if (JURISDICTIONS.has(country)) {
+      conditions.push(`jurisdiction = $${paramIndex++}`);
+      params.push(country);
+    }
+  } else if (filters.region) {
+    const region = filters.region.trim().toUpperCase();
+    if (JURISDICTIONS.has(region)) {
+      conditions.push(`jurisdiction = $${paramIndex++}`);
+      params.push(region);
     }
   }
 
-  if (
-    filters.userIndustryPreferences &&
-    filters.userIndustryPreferences.length > 0
-  ) {
-    const validIndustries = filters.userIndustryPreferences.filter((s) =>
-      isValidSector(s),
-    );
-    if (validIndustries.length > 0) {
-      const industryFilter = validIndustries
-        .map((s) => `sector = '${escapeSqlFilter(s)}'`)
-        .join(" OR ");
-      filterParts.push(`(${industryFilter})`);
+  if (filters.sector) {
+    const sector = filters.sector.trim();
+    const enumValue =
+      SECTOR_TAXONOMY_TO_ENUM[sector] ??
+      (SIGNAL_SECTORS.has(sector.toUpperCase()) ? sector.toUpperCase() : null);
+    if (enumValue) {
+      conditions.push(`sector = $${paramIndex++}::signal_sector`);
+      params.push(enumValue);
     }
   }
 
-  if (filters.sector && isValidSectorId(filters.sector)) {
-    filterParts.push(`sector = '${escapeSqlFilter(filters.sector)}'`);
-  }
-
-  // Country-based isolation: resolve country to its regions and filter.
-  // This ensures UK users only see UK signals, US users only see US signals,
-  // etc.
-  if (filters.country && COUNTRY_REGIONS[filters.country]) {
-    const regions = COUNTRY_REGIONS[filters.country];
-    const regionFilter = regions
-      .map((r) => `region = '${r}'`)
-      .join(" OR ");
-    filterParts.push(`(${regionFilter})`);
-  } else if (filters.region && isValidRegion(filters.region)) {
-    filterParts.push(`region = '${escapeSqlFilter(filters.region)}'`);
-  }
-  if (filters.stage && VALID_STAGES.includes(filters.stage)) {
-    filterParts.push(`procurement_stage = '${filters.stage}'`);
-  }
   if (filters.q) {
-    const escapedQ = escapeSqlFilter(filters.q);
-    filterParts.push(
-      `(title ILIKE '%${escapedQ}%' OR summary ILIKE '%${escapedQ}%' OR buyer ILIKE '%${escapedQ}%')`,
+    const term = `%${filters.q.trim()}%`;
+    conditions.push(
+      `(title ILIKE $${paramIndex} OR buyer_name ILIKE $${paramIndex} OR commercial_why ILIKE $${paramIndex})`,
     );
+    params.push(term);
+    paramIndex++;
   }
 
-  const filter = filterParts.length > 0 ? filterParts.join(" AND ") : "";
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  const sort =
-    filters.sort === "published_date"
-      ? "published_date DESC"
-    : filters.sort === "closing_date"
-      ? "-closing_date"
-    : filters.sort === "value"
-      ? "-estimated_value"
-      : "-created_at";
-
-  const orderBy =
-    sort.startsWith("-") ? sort.slice(1) + " DESC" : sort + " ASC";
-
+  // Only publish-descending ordering is meaningful for signals (there is no
+  // closing date, stage or value score in the canonical table).
+  const orderBy = "published_at DESC NULLS LAST, created_at DESC";
   const offset = (page - 1) * perPage;
 
+  const countResult = await query(
+    `SELECT COUNT(*)::int AS total FROM signals ${where}`,
+    params,
+  );
+  const total = Number(countResult.rows[0]?.total ?? 0);
+
   const result = await query(
-    `SELECT id, canonical_id, title, sector, region, location, buyer,
-            estimated_value, currency, procurement_stage, published_date,
-            closing_date, confidence, signal_tier, source_url, summary,
-            is_demonstration, created_at, updated_at, source_hash,
-            source_name, source_captured_at, vulnerability_trigger, winner,
-            sub_category, opportunity_type, opportunity_score, commercial_why,
-            supplier_capabilities
-     FROM opportunities
-     ${filter ? `WHERE ${filter}` : ""}
-     ORDER BY ${orderBy}
-     LIMIT $1 OFFSET $2`,
-    [perPage, offset],
+    `SELECT id, title, buyer_name, jurisdiction, sector, opportunity_type,
+            estimated_value, source_name, source_url, source_hash,
+            sha256_hash, commercial_why, published_at, created_at
+       FROM signals
+       ${where}
+       ORDER BY ${orderBy}
+       LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,
+    [...params, perPage, offset],
   );
 
-  const items = result.rows.map((item) =>
-    sanitizeOpportunity(item, entitlements),
+  const items = (result.rows as SignalRow[]).map((row) =>
+    toOpportunity(row, entitlements),
   );
 
   return {
     items,
-    total: result.rows.length,
+    total,
     page,
     perPage,
-    totalPages: Math.ceil(result.rows.length / perPage),
+    totalPages: Math.max(1, Math.ceil(total / perPage)),
   };
 }
 
 export async function getOpportunity(
   id: string,
   entitlements: Entitlements,
+  options: { jurisdiction?: string | null } = {},
 ): Promise<Record<string, unknown> | null> {
+  const conditions = ["id = $1"];
+  const params: unknown[] = [id];
+
+  if (!entitlements.fullDetailsEnabled) {
+    conditions.push(
+      `published_at >= '${FREE_EMBARGO_START}' AND published_at <= NOW() - INTERVAL '${EMBARGO_HOURS} hours'`,
+    );
+  }
+
+  if (options.jurisdiction) {
+    const jurisdiction = options.jurisdiction.trim().toUpperCase();
+    if (JURISDICTIONS.has(jurisdiction)) {
+      conditions.push(`jurisdiction = $${params.length + 1}`);
+      params.push(jurisdiction);
+    }
+  }
+
   const result = await query(
-    `SELECT id, canonical_id, title, sector, region, location, buyer,
-            estimated_value, currency, procurement_stage, published_date,
-            closing_date, confidence, signal_tier, source_url, summary,
-            is_demonstration, created_at, updated_at, source_hash,
-            source_name, source_captured_at, vulnerability_trigger, winner,
-            sub_category, opportunity_type, opportunity_score, commercial_why,
-            supplier_capabilities
-     FROM opportunities WHERE id = $1`,
-    [id],
+    `SELECT id, title, buyer_name, jurisdiction, sector, opportunity_type,
+            estimated_value, source_name, source_url, source_hash,
+            sha256_hash, commercial_why, published_at, created_at
+       FROM signals
+      WHERE ${conditions.join(" AND ")}`,
+    params,
   );
 
-  if (result.rowCount === 0) return null;
-  return sanitizeOpportunity(result.rows[0], entitlements);
-}
-
-export async function createDemonstrationOpportunity(
-  data: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const result = await query(
-    `INSERT INTO opportunities (
-      canonical_id, title, sector, region, location, buyer, estimated_value,
-      currency, procurement_stage, published_date, closing_date, confidence,
-      signal_tier, source_url, summary, is_demonstration, source_hash,
-      created_at, updated_at
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-            $15, $16, $17, $18)
-    RETURNING id, canonical_id, title, sector, region, location, buyer,
-      estimated_value, currency, procurement_stage, published_date,
-      closing_date, confidence, signal_tier, source_url, summary,
-      is_demonstration, source_hash, created_at, updated_at`,
-    [
-      data.canonical_id,
-      data.title,
-      data.sector,
-      data.region,
-      data.location,
-      data.buyer,
-      data.estimated_value,
-      data.currency,
-      data.procurement_stage,
-      data.published_date,
-      data.closing_date,
-      data.confidence,
-      data.signal_tier,
-      data.source_url,
-      data.summary,
-      true,
-      data.source_hash ?? createHash("sha256").update(`${data.title}${Date.now()}`).digest("hex"),
-    ],
-  );
-  return sanitizeOpportunity(result.rows[0], entitlementsFor("pro"));
+  if ((result.rowCount ?? 0) === 0) return null;
+  return toOpportunity(result.rows[0] as SignalRow, entitlements);
 }

@@ -3,6 +3,8 @@
 import * as React from "react";
 import {
   ArrowUpRight,
+  Bookmark,
+  Check,
   Clock,
   FileText,
   Hash,
@@ -65,8 +67,41 @@ function Field({
   );
 }
 
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+
 export function SignalDrawer({ opportunity, open, onClose }: SignalDrawerProps) {
+  // Track which opportunity the save state belongs to, so switching cards
+  // resets the button without a setState-in-effect.
+  const [save, setSave] = React.useState<{
+    id: string | null;
+    status: SaveStatus;
+  }>({ id: null, status: "idle" });
+
+  const saveState: SaveStatus =
+    opportunity && save.id === opportunity.id ? save.status : "idle";
+
   if (!opportunity) return null;
+
+  const handleSave = async () => {
+    if (!opportunity || saveState === "saving" || saveState === "saved") return;
+    const id = opportunity.id;
+    setSave({ id, status: "saving" });
+    try {
+      const response = await fetch("/api/saved-opportunities", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ opportunityId: id }),
+      });
+      // 409 means it is already saved — treat that as success.
+      setSave({
+        id,
+        status: response.ok || response.status === 409 ? "saved" : "error",
+      });
+    } catch {
+      setSave({ id, status: "error" });
+    }
+  };
 
   const score = signalScore(opportunity);
   const spend = formatSpend(
@@ -369,21 +404,46 @@ export function SignalDrawer({ opportunity, open, onClose }: SignalDrawerProps) 
               <FileText className="h-3.5 w-3.5" />
               Source-verified evidence
             </span>
-            {opportunity.source_url ? (
-              <a
-                href={opportunity.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 bg-white px-4 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-black transition-colors hover:bg-[#D4AF37]"
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saveState === "saving" || saveState === "saved"}
+                className={`inline-flex items-center gap-2 border px-4 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.18em] transition-colors ${
+                  saveState === "saved"
+                    ? "border-emerald-500/40 text-emerald-400"
+                    : "border-white/20 text-white hover:border-white/50 hover:bg-white/5"
+                }`}
               >
-                View evidence
-                <ArrowUpRight className="h-3.5 w-3.5" />
-              </a>
-            ) : (
-              <span className="font-mono text-[8px] uppercase tracking-[0.16em] text-zinc-600">
-                No source attached
-              </span>
-            )}
+                {saveState === "saved" ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : (
+                  <Bookmark className="h-3.5 w-3.5" />
+                )}
+                {saveState === "saved"
+                  ? "Saved"
+                  : saveState === "saving"
+                    ? "Saving…"
+                    : saveState === "error"
+                      ? "Retry save"
+                      : "Save signal"}
+              </button>
+              {opportunity.source_url ? (
+                <a
+                  href={opportunity.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 bg-white px-4 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-black transition-colors hover:bg-[#D4AF37]"
+                >
+                  View evidence
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </a>
+              ) : (
+                <span className="font-mono text-[8px] uppercase tracking-[0.16em] text-zinc-600">
+                  No source attached
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </SheetContent>

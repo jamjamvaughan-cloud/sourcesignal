@@ -217,11 +217,13 @@ export async function getCurrentUser(
     return {
       id: row.id as string,
       email: row.email as string,
+      // The country chosen at signup lives in `country_preferences[0]` and is
+      // the canonical jurisdiction lock for Free users. The organisation
+      // country is only a fallback for legacy rows with no preference stored.
       country:
-        (row.country as string | null) ??
         (Array.isArray(row.country_preferences) && row.country_preferences[0]
           ? row.country_preferences[0]
-          : null),
+          : null) ?? (row.country as string | null),
     };
   } catch (err: unknown) {
     error("auth_session_lookup_failed", {
