@@ -24,6 +24,7 @@ const appOrigin =
 
 const nextConfig: NextConfig = {
   ...(process.env.VERCEL ? {} : { output: "standalone" }),
+  serverComponentsExternalPackages: ["ioredis", "bcryptjs"],
   turbopack: {
     rules: {
       "*.css": {

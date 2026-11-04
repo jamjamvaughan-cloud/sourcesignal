@@ -127,3 +127,40 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 }
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const cookieHeader = request.headers.get("cookie");
+  const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
+  try {
+    const result = await query(
+      `SELECT country_preferences, industry_preferences, subcategory_preferences
+       FROM users
+       WHERE id = $1`,
+      [user.id],
+    );
+
+    if ((result.rowCount ?? 0) === 0) {
+      return NextResponse.json({ error: "User not found." }, { status: 404 });
+    }
+
+    const row = result.rows[0];
+    return NextResponse.json({
+      countryPreferences: row.country_preferences ?? [],
+      industryPreferences: row.industry_preferences ?? [],
+      subCategoryPreferences: row.subcategory_preferences ?? [],
+    });
+  } catch (err: unknown) {
+    error("user_preferences_fetch_failed", {
+      userId: user.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: "Failed to fetch preferences." },
+      { status: 500 },
+    );
+  }
+}

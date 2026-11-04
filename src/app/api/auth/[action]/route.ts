@@ -237,9 +237,10 @@ export async function POST(
           organisationId: created.organisationId,
           plan: "free",
         });
+        const host = request.headers.get("host");
         response.headers.set(
           "Set-Cookie",
-          buildSessionCookie(token, SESSION_TTL),
+          buildSessionCookie(token, SESSION_TTL, request.headers.get("host")),
         );
         return response;
       } catch (err: unknown) {
@@ -306,9 +307,10 @@ export async function POST(
           user: { id: user.id, email: user.email },
           plan: await getUserPlanId(user.id as string),
         });
+        const host = request.headers.get("host");
         response.headers.set(
           "Set-Cookie",
-          buildSessionCookie(token, SESSION_TTL),
+          buildSessionCookie(token, SESSION_TTL, request.headers.get("host")),
         );
         return response;
       } catch (err: unknown) {
@@ -355,7 +357,7 @@ export async function POST(
           target = new URL("/auth/signin", request.url);
         }
         const redirect = NextResponse.redirect(target, 303);
-        redirect.headers.set("Set-Cookie", clearSessionCookie());
+        redirect.headers.set("Set-Cookie", clearSessionCookie(request.headers.get("host")));
         redirect.headers.set("Cache-Control", "no-store");
         return redirect;
       }
@@ -365,7 +367,7 @@ export async function POST(
         ok: true,
         redirectTo: "/auth/signin",
       });
-      response.headers.set("Set-Cookie", clearSessionCookie());
+      response.headers.set("Set-Cookie", clearSessionCookie(request.headers.get("host")));
       response.headers.set("Cache-Control", "no-store");
       return response;
     }

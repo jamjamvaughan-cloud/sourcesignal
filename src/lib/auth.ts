@@ -18,33 +18,47 @@ export const SESSION_COOKIE = "session_id";
 export const SESSION_TTL = 7 * 24 * 60 * 60;
 
 /**
- * Builds a `Set-Cookie` value for a session token. Adds `Secure` in
- * production so the cookie is never sent over plain HTTP.
- *
- * In production the cookie is scoped to the root domain
- * (sourcesignal.site) so it is sent to both the frontend (sourcesignal.site)
- * and the API subdomain (api.sourcesignal.site). SameSite=None is required
- * for cross-site POST requests (signin/signup) from the frontend to the API.
+ * Determines the appropriate cookie domain based on the request host.
+ * Returns empty string for local development domains (localhost, lvh.me, etc.)
+ * to avoid cookie domain mismatch issues.
  */
+function getCookieDomain(host?: string | null): string {
+  if (!host) return "; Domain=sourcesignal.site";
+  
+  const hostname = host.split(":")[0].toLowerCase();
+  
+  // Local development domains - use appropriate domain for cookie storage
+  if (hostname === "lvh.me") {
+    return "; Domain=.lvh.me";
+  }
+  if (["localhost", "127.0.0.1", "::1"].includes(hostname)) {
+    return "; Domain=localhost";
+  }
+  
+  // Production domain
+  return "; Domain=sourcesignal.site";
+}
+
 export function buildSessionCookie(
   token: string,
   maxAge: number = SESSION_TTL,
+  host?: string | null,
 ): string {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  const domain =
-    process.env.NODE_ENV === "production" ? "; Domain=sourcesignal.site" : "";
-  const sameSite =
-    process.env.NODE_ENV === "production" ? "; SameSite=None" : "; SameSite=Lax";
+  const isLocal = host?.split(":")[0].toLowerCase() === "lvh.me" || host?.includes("localhost") || host?.includes("127.0.0.1");
+  const isProduction = process.env.NODE_ENV === "production" && !isLocal;
+  const secure = (process.env.NODE_ENV === "production" && !isLocal) ? "; Secure" : "";
+  const domain = host ? getCookieDomain(host) : (process.env.NODE_ENV === "production" ? "; Domain=sourcesignal.site" : "");
+  const sameSite = (process.env.NODE_ENV === "production" && !isLocal) ? "; SameSite=None" : "; SameSite=Lax";
   return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly${sameSite}; Max-Age=${maxAge}${secure}${domain}`;
 }
 
 /** Cookie value that clears the session cookie. */
-export function clearSessionCookie(): string {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  const domain =
-    process.env.NODE_ENV === "production" ? "; Domain=sourcesignal.site" : "";
-  const sameSite =
-    process.env.NODE_ENV === "production" ? "; SameSite=None" : "; SameSite=Lax";
+export function clearSessionCookie(host?: string | null): string {
+  const isProduction = process.env.NODE_ENV === "production";
+  const isLocal = host?.split(":")[0].toLowerCase() === "lvh.me" || host?.includes("localhost") || host?.includes("127.0.0.1");
+  const secure = (process.env.NODE_ENV === "production" && !host?.includes("lvh.me") && !host?.includes("localhost")) ? "; Secure" : "";
+  const domain = host ? getCookieDomain(host) : (process.env.NODE_ENV === "production" ? "; Domain=sourcesignal.site" : "");
+  const sameSite = process.env.NODE_ENV === "production" ? "; SameSite=None" : "; SameSite=Lax";
   return `${SESSION_COOKIE}=; Path=/; HttpOnly${sameSite}; Max-Age=0${secure}${domain}`;
 }
 

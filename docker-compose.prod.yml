@@ -147,6 +147,8 @@ services:
       PORT: "3000"
       HOSTNAME: "0.0.0.0"
       # BACKEND_URL must NOT be set here: the API serves its own routes.
+    ports:
+      - "3000:3000"
     expose:
       - "3000"
     depends_on:
