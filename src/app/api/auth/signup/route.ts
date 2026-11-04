@@ -17,6 +17,7 @@
 
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { queryDirect } from "@/lib/db-direct";
 import { setSession } from "@/lib/redis";
 import { SESSION_TTL, buildSessionCookie } from "@/lib/auth";
 import { error, info } from "@/lib/logger";
@@ -131,7 +132,7 @@ export async function POST(request: Request) {
 
     // Check for an existing account first. The unique index protects against
     // concurrent signups.
-    const existingUser = await query(
+    const existingUser = await queryDirect(
       "SELECT id FROM users WHERE email = $1",
       [email],
     );
@@ -145,7 +146,7 @@ export async function POST(request: Request) {
     // Persist the country chosen at signup as the user's canonical
     // jurisdiction. Without this the column falls back to its `{UK}`
     // default, which locked US/EU signups into UK signals.
-    const userResult = await query(
+    const userResult = await queryDirect(
       `INSERT INTO users (email, password_hash, subscription_tier, country_preferences, created_at, updated_at)
        VALUES ($1, $2, 'free', $3, NOW(), NOW())
        RETURNING id, email, subscription_tier`,
@@ -166,7 +167,7 @@ export async function POST(request: Request) {
         .replace(/^-|-$/g, "") || "workspace";
     const orgSlug = `${slugBase}-${newUser.id.slice(0, 8)}`;
 
-    const orgResult = await query(
+    const orgResult = await queryDirect(
       `INSERT INTO organisations (name, slug, plan, country, owner_id, created_by, created_at, updated_at)
        VALUES ($1, $2, 'free', $3, $4, $4, NOW(), NOW())
        RETURNING id, name, country`,
@@ -178,14 +179,14 @@ export async function POST(request: Request) {
       country: string;
     };
 
-    await query(
+    await queryDirect(
       `INSERT INTO memberships (user_id, organisation_id, role, created_at, updated_at)
        VALUES ($1, $2, 'owner', NOW(), NOW())`,
       [newUser.id, newOrg.id],
     );
 
     // Keep the user's primary organisation pointer in sync.
-    await query(
+    await queryDirect(
       `UPDATE users SET organisation_id = $1, updated_at = NOW() WHERE id = $2`,
       [newOrg.id, newUser.id],
     );
