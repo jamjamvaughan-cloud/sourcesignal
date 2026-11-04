@@ -151,7 +151,11 @@ export async function POST(request: Request) {
       [email, passwordHash, [country]],
     );
     console.log("SIGNUP_DEBUG: User INSERT rowCount:", userResult.rowCount);
-    console.log("SIGNUP_DEBUG: User INSERT rows:", JSON.stringify(userResult.rows));
+    try {
+      require("fs").appendFileSync("/tmp/signup_debug.txt", `INSERT executed: ${email}\n`);
+    } catch (fsErr) {
+      console.log("SIGNUP_DEBUG: FS write failed:", fsErr.message);
+    }
     const newUser = userResult.rows[0] as {
       id: string;
       email: string;
