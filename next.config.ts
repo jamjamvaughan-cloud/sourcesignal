@@ -24,7 +24,7 @@ const appOrigin =
 
 const nextConfig: NextConfig = {
   ...(process.env.VERCEL ? {} : { output: "standalone" }),
-  serverComponentsExternalPackages: ["ioredis", "bcryptjs"],
+  serverExternalPackages: ["ioredis", "bcryptjs"],
   turbopack: {
     rules: {
       "*.css": {
@@ -41,12 +41,19 @@ const nextConfig: NextConfig = {
     }
 
     // Frontend deployment: proxy API traffic (including SSE) to the VPS.
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${backendUrl}/api/:path*`,
-      },
-    ];
+    //
+    // `beforeFiles` is required. A plain array is applied as `afterFiles`, so
+    // any API route that exists in this build runs on Vercel (which has no
+    // database or Redis) and shadows the VPS. That caused production 401s on
+    // authenticated routes and 500/503s on database-backed routes.
+    return {
+      beforeFiles: [
+        {
+          source: "/api/:path*",
+          destination: `${backendUrl}/api/:path*`,
+        },
+      ],
+    };
   },
 
   async headers() {

@@ -44,6 +44,10 @@ log "Applying idempotent schema"
 "${COMPOSE[@]}" exec -T postgres psql -U "$PG_USER" -d "$PG_DB" < src/lib/db-schema.sql
 
 log "Building and restarting the stack"
+if [ "${NO_CACHE:-0}" = "1" ]; then
+  log "NO_CACHE=1: rebuilding images without cached layers"
+  "${COMPOSE[@]}" build --no-cache
+fi
 "${COMPOSE[@]}" up -d --build
 
 log "Waiting for API health"
@@ -57,11 +61,13 @@ done
 log "Verifying public routes through Caddy"
 declare -A EXPECTED=(
   ["/api/health"]=200
+  ["/api/coverage"]=200
   ["/api/signals"]=401
+  ["/api/user/preferences"]=401
   ["/api/webhooks"]=401
 )
 FAILED=0
-for path in /api/health /api/signals /api/webhooks; do
+for path in /api/health /api/coverage /api/signals /api/user/preferences /api/webhooks; do
   code="$(curl -sS -o /dev/null -w '%{http_code}' -m 20 "${API_ORIGIN}${path}" || echo 000)"
   printf '  %-16s %s (expected %s)\n' "$path" "$code" "${EXPECTED[$path]}"
   if [ "$code" != "${EXPECTED[$path]}" ]; then
