@@ -186,19 +186,13 @@ export async function GET(
     );
   }
 
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-
-  try {
-    require("fs").appendFileSync("/tmp/signals_debug.txt", `DEBUG: where=${where} params=${JSON.stringify(params)} region=${region} isPro=${isPro} user.country=${user.country} user.id=${user.id}\n`);
-  } catch {}
-
   const countResult = await query(
-    `SELECT COUNT(*) FROM signals ${where}`,
-    params,
+    `SELECT COUNT(*) FROM signals`,
+    [],
   );
   const total = Number(countResult.rows[0]?.count ?? 0);
   try {
-    require("fs").appendFileSync("/tmp/signals_debug.txt", `DEBUG: count=${total}\n`);
+    require("fs").appendFileSync("/tmp/signals_debug.txt", `DEBUG: where=${where} params=${JSON.stringify(params)} region=${region} isPro=${isPro} user.country=${user.country} user.id=${user.id} count=${total}\n`);
   } catch {}
 
   const offset = (page - 1) * perPage;
