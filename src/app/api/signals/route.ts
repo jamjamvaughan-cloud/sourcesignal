@@ -218,11 +218,17 @@ export async function GET(
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
+  console.log("SIGNALS_DEBUG: where=", where);
+  console.log("SIGNALS_DEBUG: params=", JSON.stringify(params));
+  console.log("SIGNALS_DEBUG: region=", region);
+  console.log("SIGNALS_DEBUG: isPro=", isPro);
+
   const countResult = await query(
     `SELECT COUNT(*) FROM signals ${where}`,
     params,
   );
   const total = Number(countResult.rows[0]?.count ?? 0);
+  console.log("SIGNALS_DEBUG: count result=", total);
 
   const offset = (page - 1) * perPage;
   const dataResult = await query(
