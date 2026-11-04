@@ -229,11 +229,14 @@ export async function GET(
   console.log("SIGNALS_DEBUG: params=", JSON.stringify(params));
   console.log("SIGNALS_DEBUG: region=", region);
   console.log("SIGNALS_DEBUG: isPro=", isPro);
+  console.log("SIGNALS_DEBUG: user.country=", user.country);
+  console.log("SIGNALS_DEBUG: user.id=", user.id);
 
   const countResult = await DIRECT_POOL.query(
     `SELECT COUNT(*) FROM signals ${where}`,
     params,
   );
+  console.log("SIGNALS_DEBUG: raw count rows=", JSON.stringify(countResult.rows));
   const total = Number(countResult.rows[0]?.count ?? 0);
   console.log("SIGNALS_DEBUG: count result=", total);
 
