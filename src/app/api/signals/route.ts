@@ -21,7 +21,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser, getUserPlanId } from "@/lib/auth";
 import { entitlementsFor } from "@/lib/entitlements";
-import { queryDirect } from "@/lib/db-direct";
+import { Pool } from "pg";
+
+const DIRECT_POOL = new Pool({
+  connectionString: process.env.DATABASE_URL?.replace(/:6432\//, ":5432/"),
+  max: 20,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
+});
 
 /** Maps ingestion `sector` enum values to the controlled taxonomy ids used
  *  by the dashboard (so `sectorLabel()` and client-side filtering work). */
@@ -223,7 +230,7 @@ export async function GET(
   console.log("SIGNALS_DEBUG: region=", region);
   console.log("SIGNALS_DEBUG: isPro=", isPro);
 
-  const countResult = await queryDirect(
+  const countResult = await DIRECT_POOL.query(
     `SELECT COUNT(*) FROM signals ${where}`,
     params,
   );
@@ -231,7 +238,7 @@ export async function GET(
   console.log("SIGNALS_DEBUG: count result=", total);
 
   const offset = (page - 1) * perPage;
-  const dataResult = await queryDirect(
+  const dataResult = await DIRECT_POOL.query(
     `SELECT id, title, buyer_name, jurisdiction, sector, opportunity_type,
             estimated_value, source_name, source_url, source_hash,
             sha256_hash, commercial_why, published_at, created_at
