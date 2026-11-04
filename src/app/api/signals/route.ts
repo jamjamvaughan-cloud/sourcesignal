@@ -19,7 +19,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser, getUserPlanId } from "@/lib/auth";
 import { entitlementsFor } from "@/lib/entitlements";
-import { query } from "@/lib/db";
+import { Pool } from "pg";
+
+const POOL = new Pool({
+  connectionString: process.env.DATABASE_URL?.replace(/:6432\//, ":5432/"),
+  max: 20,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
+});
 
 /** Maps ingestion `sector` enum values to the controlled taxonomy ids used
  *  by the dashboard (so `sectorLabel()` and client-side filtering work). */
@@ -192,24 +199,25 @@ export async function GET(
     require("fs").appendFileSync("/tmp/signals_debug.txt", `DEBUG: where=${where} params=${JSON.stringify(params)} region=${region} isPro=${isPro} user.country=${user.country} user.id=${user.id}\n`);
   } catch {}
 
-  const countResult = await query(
-    `SELECT COUNT(*) FROM signals`,
-    [],
+  const countResult = await POOL.query(
+    `SELECT COUNT(*) FROM signals ${where}`,
+    params,
   );
   const total = Number(countResult.rows[0]?.count ?? 0);
   try {
-    require("fs").appendFileSync("/tmp/signals_debug.txt", `DEBUG: count=${total} all_signals\n`);
+    require("fs").appendFileSync("/tmp/signals_debug.txt", `DEBUG: count=${total}\n`);
   } catch {}
 
   const offset = (page - 1) * perPage;
-  const dataResult = await query(
+  const dataResult = await POOL.query(
     `SELECT id, title, buyer_name, jurisdiction, sector, opportunity_type,
             estimated_value, source_name, source_url, source_hash,
             sha256_hash, commercial_why, published_at, created_at
        FROM signals
+       ${where}
        ORDER BY published_at DESC NULLS LAST, created_at DESC
        LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,
-    [perPage, offset],
+    [...params, perPage, offset],
   );
 
   const items = dataResult.rows.map((row) =>
