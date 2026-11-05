@@ -79,3 +79,15 @@ FAM | META SEQ | SST SEQ         | RANGE
   0 | 00000046 | 00000045 SST    |                                                                             O                        | c44bdff4074eecdb-c44bdff4074eecdb (0 MiB, fresh, 38 bytes, 1 entries, 0 tombstones)
   1 | 00000047 | 00000043 SST    | [==================================================================================================] | 00382a87aa704f7f-ff7319df4aec67fe (0 MiB, fresh, 756428 bytes, 1095 entries, 0 tombstones)
   2 | 00000048 | 00000044 SST    |    [=================================================================================]               | 090ba600c3820fc2-db02334e96d65708 (0 MiB, fresh, 18361 bytes, 2 entries, 0 tombstones)
+Time 2026-11-05T06:32:20.192807081Z
+Commit 00000054 1098 keys in 33ms 21µs 94ns
+FAM | META SEQ | SST SEQ         | RANGE
+  0 | 00000052 | 00000051 SST    |                                                                             O                        | c44bdff4074eecdb-c44bdff4074eecdb (0 MiB, fresh, 38 bytes, 1 entries, 0 tombstones)
+  2 | 00000053 | 00000049 SST    |    [=================================================================================]               | 090ba600c3820fc2-db02334e96d65708 (0 MiB, fresh, 18359 bytes, 2 entries, 0 tombstones)
+  1 | 00000054 | 00000050 SST    | [==================================================================================================] | 00382a87aa704f7f-ff7319df4aec67fe (0 MiB, fresh, 754978 bytes, 1095 entries, 0 tombstones)
+Time 2026-11-05T06:32:39.393763285Z
+Commit 00000060 1098 keys in 260ms 219µs 873ns
+FAM | META SEQ | SST SEQ         | RANGE
+  0 | 00000058 | 00000057 SST    |                                                                             O                        | c44bdff4074eecdb-c44bdff4074eecdb (0 MiB, fresh, 38 bytes, 1 entries, 0 tombstones)
+  2 | 00000059 | 00000056 SST    |    [=================================================================================]               | 090ba600c3820fc2-db02334e96d65708 (0 MiB, fresh, 18375 bytes, 2 entries, 0 tombstones)
+  1 | 00000060 | 00000055 SST    | [==================================================================================================] | 00382a87aa704f7f-ff7319df4aec67fe (0 MiB, fresh, 755372 bytes, 1095 entries, 0 tombstones)
