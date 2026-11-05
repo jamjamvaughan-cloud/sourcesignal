@@ -22,7 +22,7 @@ import { entitlementsFor } from "@/lib/entitlements";
 import { Pool } from "pg";
 
 const POOL = new Pool({
-  connectionString: "postgres://sourcesignal:7a8a47624f65ea54926a6c07aa712f8a76f7999fc76d7ff9e116b5a756c7dbb8@172.18.0.2:5432/sourcesignal_db?sslmode=disable",
+  connectionString: process.env.DATABASE_URL,
   max: 20,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
