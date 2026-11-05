@@ -9,6 +9,7 @@
     "build:frontend": "npm run build --prefix frontend",
     "lint:frontend": "npm run lint --prefix frontend",
     "test:frontend": "npm run test --prefix frontend",
-    "preview:frontend": "npm run start --prefix frontend"
+    "preview:frontend": "npm run start --prefix frontend",
+    "vercel-build": "npm run build:frontend"
   }
 }
