@@ -160,6 +160,17 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------------
+-- daily_view_counts (per-user daily signal view tracking for free tier limits)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS daily_view_counts (
+  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  view_date   DATE NOT NULL DEFAULT CURRENT_DATE,
+  view_count  INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, view_date),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ---------------------------------------------------------------------------
 -- cache_entries (shared cache / session fallback for Redis)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS cache_entries (

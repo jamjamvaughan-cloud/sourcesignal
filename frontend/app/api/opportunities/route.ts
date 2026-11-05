@@ -71,6 +71,26 @@ export async function GET(request: NextRequest): Promise<Response> {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
+  // Daily view limit for Free users
+  if (!caller.entitlements.fullDetailsEnabled && !caller.entitlements.alertsEnabled) {
+    const today = new Date().toISOString().slice(0, 10);
+    const countResult = await query(
+      `INSERT INTO daily_view_counts (user_id, view_date, view_count, updated_at)
+       VALUES ($1, $2, 1, NOW())
+       ON CONFLICT (user_id, view_date)
+       UPDATE SET view_count = daily_view_counts.view_count + 1, updated_at = NOW()
+       RETURNING view_count`,
+      [caller.userId, today],
+    );
+    const viewCount = Number(countResult.rows[0]?.view_count ?? 0);
+    if (viewCount > 10) {
+      return NextResponse.json(
+        { error: "Daily view limit reached. Upgrade to Pro for unlimited access." },
+        { status: 429 },
+      );
+    }
+  }
+
   const searchParams = request.nextUrl.searchParams;
   const requestedCountry =
     searchParams.get("country") || searchParams.get("region") || undefined;

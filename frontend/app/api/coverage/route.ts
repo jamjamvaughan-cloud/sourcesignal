@@ -8,8 +8,10 @@
  * country/sector/type, last ingestion run, uptime, etc.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { getCurrentUser, getUserPlanId } from "@/lib/auth";
+import { entitlementsFor } from "@/lib/entitlements";
 
 const SECTOR_TO_TAXONOMY: Record<string, string> = {
   TECH: "technology-infrastructure",
@@ -21,7 +23,29 @@ const SECTOR_TO_TAXONOMY: Record<string, string> = {
   LOGISTICS: "logistics-and-distribution",
 };
 
-export async function GET(): Promise<NextResponse> {
+async function requirePro(request: NextRequest) {
+  const cookieHeader = request.headers.get("cookie");
+  const user = cookieHeader ? await getCurrentUser(cookieHeader) : null;
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
+  const planId = await getUserPlanId(user.id);
+  const entitlements = entitlementsFor(planId);
+  if (!entitlements.fullDetailsEnabled) {
+    return NextResponse.json(
+      { error: "Pro tier subscription required" },
+      { status: 403 },
+    );
+  }
+
+  return null;
+}
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const authResult = await requirePro(request);
+  if (authResult) return authResult;
+
   try {
     // Distinct primary sources are the real "adapters" that have produced
     // signals (the legacy `adapters` table is not populated by ingestion).

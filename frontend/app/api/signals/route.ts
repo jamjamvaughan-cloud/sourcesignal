@@ -141,6 +141,26 @@ export async function GET(
   const entitlements = entitlementsFor(planId);
   const isPro = entitlements.fullDetailsEnabled || entitlements.alertsEnabled;
 
+  // Daily view limit enforcement for Free users
+  if (!isPro) {
+    const today = new Date().toISOString().slice(0, 10);
+    const countResult = await POOL.query(
+      `INSERT INTO daily_view_counts (user_id, view_date, view_count, updated_at)
+       VALUES ($1, $2, 1, NOW())
+       ON CONFLICT (user_id, view_date)
+       UPDATE SET view_count = daily_view_counts.view_count + 1, updated_at = NOW()
+       RETURNING view_count`,
+      [user.id, today],
+    );
+    const viewCount = Number(countResult.rows[0]?.view_count ?? 0);
+    if (viewCount > 10) {
+      return NextResponse.json(
+        { error: "Daily view limit reached. Upgrade to Pro for unlimited access." },
+        { status: 429 },
+      );
+    }
+  }
+
   const { searchParams } = new URL(request.url);
   const sector = searchParams.get("sector") || undefined;
   const type =

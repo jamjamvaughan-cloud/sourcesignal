@@ -10,8 +10,8 @@ import { type PlanId } from "@/lib/entitlements";
 /** Daily view limit for Free users. */
 export const FREE_DAILY_VIEW_LIMIT = 10;
 
-/** Maximum sectors Free users can select. Free users can select all 15 sectors. */
-export const FREE_MAX_SECTORS = 15;
+/** Maximum sectors Free users can select. Free users are capped at 3 sectors. */
+export const FREE_MAX_SECTORS = 3;
 
 /** Value threshold (£) above which values are blurred for Free users. */
 export const FREE_VALUE_BLUR_THRESHOLD = 5_000_000;
@@ -99,7 +99,7 @@ export function getUpgradeMessage(feature: string): string {
     fullMap: "Upgrade to Pro for full map drill-downs and geospatial analysis.",
     integrations: "Upgrade to Pro for custom webhook and API integrations.",
     fullValues: "Upgrade to Pro to view full contract valuations.",
-    sectorLimit: "All 15 sectors are available on Free. Upgrade to Pro for intelligence features.",
+    sectorLimit: "Free users can track up to 3 sectors. Upgrade to Pro for all 15 sectors.",
     dailyLimit: "You've reached your daily view limit. Upgrade to Pro for unlimited access.",
   };
   return messages[feature] || "Upgrade to Pro to unlock this feature.";
