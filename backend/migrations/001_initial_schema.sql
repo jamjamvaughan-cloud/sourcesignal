@@ -146,6 +146,19 @@ CREATE TABLE IF NOT EXISTS signals (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Unique constraint on content_hash for idempotent re-ingestion via ON CONFLICT.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'signals'::regclass
+      AND contype = 'u'
+      AND conname = 'signals_content_hash_key'
+  ) THEN
+    ALTER TABLE signals ADD CONSTRAINT signals_content_hash_key UNIQUE (content_hash);
+  END IF;
+END $$;
+
 -- ---------------------------------------------------------------------------
 -- cache_entries (shared cache / session fallback for Redis)
 -- ---------------------------------------------------------------------------
