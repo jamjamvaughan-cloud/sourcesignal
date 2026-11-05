@@ -1,0 +1,3 @@
+module.exports=[59581,t=>t.a(async(r,s)=>{try{var e=t.i(79603);t.i(54799);var a=r([e]);[e]=a.then?(await a)():a,t.s(["f",0,function(t){try{let r=new URL(t);if("http:"!==r.protocol&&"https:"!==r.protocol)return!1;let s=r.hostname.toLowerCase();if("localhost"===s||"127.0.0.1"===s||"::1"===s||s.startsWith("169.254.")||s.startsWith("10."))return!1;if(s.startsWith("172.")){let t=s.split("."),r=Number(t[1]);if(!Number.isNaN(r)&&r>=16&&r<=31)return!1}if(s.startsWith("192.168.")||s.startsWith("fe80:")||s.startsWith("::1"))return!1;return!0}catch{return!1}}]),s()}catch(t){s(t)}},!1)];
+
+//# sourceMappingURL=frontend_src_lib_webhooks_index_ts_0agye8h393ysv._.js.map

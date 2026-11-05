@@ -1,0 +1,3 @@
+{
+  "/api/webhooks/receive/route": "app/api/webhooks/receive/route.js"
+}

@@ -1,0 +1,3 @@
+module.exports=[93387,e=>{"use strict";e.s(["validateServerEnv",0,function(){if(!function(){let e=process.env.DATABASE_URL;if(!e)throw Error("Missing DATABASE_URL. Set it in .env (see .env.example) before starting the application.");if(!/^postgres(ql)?:\/\//.test(e))throw Error("DATABASE_URL must start with 'postgres://' or 'postgresql://'.")}(),!process.env.JWT_SECRET?.trim())throw Error("Missing required server environment variable: JWT_SECRET")}])}];
+
+//# sourceMappingURL=src_lib_env_ts_2165k83csqcsp._.js.map

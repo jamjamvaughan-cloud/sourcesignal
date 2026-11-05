@@ -1,0 +1,44 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/app/layout,_N_T_/app/dashboard/layout,_N_T_/app/dashboard/pipeline/layout,_N_T_/app/dashboard/pipeline/page,_N_T_/app/dashboard/pipeline"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/app/dashboard/pipeline/__PAGE__"
+  ],
+  "prefetchHints": {
+    "hints": 64,
+    "slots": {
+      "children": {
+        "hints": 96,
+        "slots": {
+          "children": {
+            "hints": 96,
+            "slots": {
+              "children": {
+                "hints": 96,
+                "slots": {
+                  "children": {
+                    "hints": 160,
+                    "slots": null
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "routeCache": {
+    "key": "/route-cache/APP_PAGE/0aa4d61eaff72ca66f595f9cff0e8b55de03b1924ee28928f6be9fed0640a1db/$/app/dashboard/pipeline",
+    "owner": {
+      "kind": "APP_PAGE",
+      "sourceRoute": "/app/dashboard/pipeline/page"
+    },
+    "isFallback": false
+  }
+}

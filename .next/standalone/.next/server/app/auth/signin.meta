@@ -1,0 +1,39 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/auth/layout,_N_T_/auth/signin/layout,_N_T_/auth/signin/page,_N_T_/auth/signin"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/auth/signin/__PAGE__"
+  ],
+  "prefetchHints": {
+    "hints": 64,
+    "slots": {
+      "children": {
+        "hints": 96,
+        "slots": {
+          "children": {
+            "hints": 96,
+            "slots": {
+              "children": {
+                "hints": 160,
+                "slots": null
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "routeCache": {
+    "key": "/route-cache/APP_PAGE/0bbec4e832edaebd574f673c13fe79889d4a11fe59bf723a0142f1529e3ad171/$/auth/signin",
+    "owner": {
+      "kind": "APP_PAGE",
+      "sourceRoute": "/auth/signin/page"
+    },
+    "isFallback": false
+  }
+}

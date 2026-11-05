@@ -1,0 +1,44 @@
+1:"$Sreact.fragment"
+:HL["/_next/static/chunks/32tbp3y67m47u.css","style"]
+2:T8e1,{"@context":"https://schema.org","@type":"DataCatalog","name":"SourceSignal Procurement Data Catalog","description":"Commercial intelligence dataset covering procurement opportunities across 15 sub-industries and 6 jurisdictions.","provider":{"@type":"Organization","name":"SourceSignal","url":"https://sourcesignal.example.com"},"publisher":{"@type":"Organization","name":"SourceSignal","url":"https://sourcesignal.example.com"},"dataset":[{"@type":"Dataset","name":"Infrastructure & Construction Procurement Dataset","description":"Building, civil engineering, transport, utilities and real estate.","url":"https://sourcesignal.example.com/dashboard/opportunities?sector=infrastructure-and-construction","keywords":"Construction, Infrastructure, Transport, Property and Real Estate","isAccessibleForFree":true},{"@type":"Dataset","name":"Energy & Utilities Procurement Dataset","description":"Power generation, transmission, water, waste and facilities.","url":"https://sourcesignal.example.com/dashboard/opportunities?sector=energy-and-utilities","keywords":"Energy, Water and Environment, Facilities Management","isAccessibleForFree":true},{"@type":"Dataset","name":"Technology & Telecom Procurement Dataset","description":"Digital infrastructure, connectivity, IT and public services.","url":"https://sourcesignal.example.com/dashboard/opportunities?sector=technology-and-telecom","keywords":"Technology Infrastructure, Telecommunications, Public Sector Services","isAccessibleForFree":true},{"@type":"Dataset","name":"Defence, Aerospace & Industrial Procurement Dataset","description":"Defence, aerospace, security, engineering and manufacturing.","url":"https://sourcesignal.example.com/dashboard/opportunities?sector=defence-aerospace-and-industrial","keywords":"Defence and Aerospace, Engineering, Industrial and Manufacturing","isAccessibleForFree":true},{"@type":"Dataset","name":"Logistics & Healthcare Capex Procurement Dataset","description":"Warehousing, freight, distribution and healthcare capital projects.","url":"https://sourcesignal.example.com/dashboard/opportunities?sector=logistics-and-healthcare-capex","keywords":"Logistics and Distribution, Healthcare Infrastructure","isAccessibleForFree":true}],"inLanguage":"en-GB","isAccessibleForFree":true}5:X
+c:X
+c:C
+d:[["children",{"s":"__PAGE__","h":160,"d":{"r":"$Le","p":"$@f","v":null,"s":"$5"}}]]
+9:[["children",{"s":"profile","h":96,"d":{"r":"$La","p":"$@b","v":"$c","s":"$5"},"c":"$Qd"}]]
+6:[["children",{"s":"dashboard","h":96,"d":{"r":"$L7","p":"$@8","v":null,"s":"$5"},"c":"$Q9"}]]
+0:{"t":{"t":{"s":"","h":80,"d":{"r":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/32tbp3y67m47u.css","precedence":"next"}],["$","script","script-0",{"src":"/_next/static/chunks/01yj35q-be-64.js","async":true}]],["$","html",null,{"lang":"en","className":"_6Ko87q_variable lwViEW_variable h-full antialiased bg-black text-white","children":[["$","head",null,{"children":[["$","script",null,{"type":"application/ld+json","dangerouslySetInnerHTML":{"__html":"{\"@context\":\"https://schema.org\",\"@type\":\"Organization\",\"name\":\"SourceSignal\",\"url\":\"https://sourcesignal.example.com\",\"logo\":\"https://sourcesignal.example.com/icon.svg\",\"email\":\"admin@example.com\",\"telephone\":\"+44 20 7946 0958\",\"address\":{\"@type\":\"PostalAddress\",\"streetAddress\":\"10 Downing Street\",\"addressLocality\":\"London\",\"addressRegion\":\"England\",\"postalCode\":\"SW1A 2AA\",\"addressCountry\":\"GB\"},\"sameAs\":[],\"description\":\"Commercial intelligence and procurement SaaS — discover, evaluate and monitor procurement opportunities across supported sectors and regions.\"}"}}],["$","script",null,{"type":"application/ld+json","dangerouslySetInnerHTML":{"__html":"$2"}}]]}],"$L3"]}]]}],"p":"$@4","v":null,"s":"$5"},"c":"$Q6"},"h":{"r":"$L10","p":"$@11","v":null,"s":"$5"}},"a":"$@12","u":"$@13","b":"gsEgTd7iuisLq99eKu_nl"}
+14:"/_next/static/chunks/01yj35q-be-64.js"
+15:I[39756,["$14"],"default"]
+16:I[37457,["$14"],"default"]
+17:I[83167,["$14"],"CookieBanner"]
+18:"/_next/static/chunks/36sxaw2991tnp.js"
+19:"DashboardLayoutShell"
+1a:I[24958,["$14","$18"],"$19"]
+1b:I[47257,["$14"],"ClientPageRoot"]
+1c:"/_next/static/chunks/3ffwy1wl-54u6.js"
+1d:"/_next/static/chunks/2ihck-ongu9fn.js"
+1e:I[97251,["$14","$18","$1c","$1d"],"default"]
+21:I[97367,["$14"],"OutletBoundary"]
+22:"$Sreact.suspense"
+24:"ViewportBoundary"
+25:I[97367,["$14"],"$24"]
+26:"MetadataBoundary"
+27:I[97367,["$14"],"$26"]
+28:I[27201,["$14"],"IconMark"]
+3:["$","body",null,{"className":"min-h-full flex flex-col bg-black text-white antialiased","children":[["$","main",null,{"className":"flex-1 overflow-x-clip","children":["$","$L15",null,{"parallelRouterKey":"children","template":["$","$L16",null,{}],"notFound":[[["$","title",null,{"children":"404: This page could not be found."}],["$","div",null,{"style":{"fontFamily":"system-ui,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\"","height":"100vh","textAlign":"center","display":"flex","flexDirection":"column","alignItems":"center","justifyContent":"center"},"children":["$","div",null,{"children":[["$","style",null,{"dangerouslySetInnerHTML":{"__html":"body{color:#000;background:#fff;margin:0}.next-error-h1{border-right:1px solid rgba(0,0,0,.3)}@media (prefers-color-scheme:dark){body{color:#fff;background:#000}.next-error-h1{border-right:1px solid rgba(255,255,255,.3)}}"}}],["$","h1",null,{"className":"next-error-h1","style":{"display":"inline-block","margin":"0 20px 0 0","padding":"0 23px 0 0","fontSize":24,"fontWeight":500,"verticalAlign":"top","lineHeight":"49px"},"children":404}],["$","div",null,{"style":{"display":"inline-block"},"children":["$","h2",null,{"style":{"fontSize":14,"fontWeight":400,"lineHeight":"49px","margin":0},"children":"This page could not be found."}]}]]}]}]],[]]}]}],["$","$L17",null,{}]]}]
+7:["$","$1","c",{"children":[[["$","script","script-0",{"src":"/_next/static/chunks/36sxaw2991tnp.js","async":true}]],["$","div",null,{"className":"min-h-screen bg-[#050505] text-white","children":[["$","$L1a",null,{}],["$","main",null,{"className":"min-w-0 px-4 py-8 lg:px-8 lg:py-10","children":["$","$L15",null,{"parallelRouterKey":"children","template":["$","$L16",null,{}]}]}]]}]]}]
+a:["$","$1","c",{"children":[null,["$","$L15",null,{"parallelRouterKey":"children","template":["$","$L16",null,{}]}]]}]
+e:["$","$1","c",{"children":[["$","$L1b",null,{"Component":"$1e","serverProvidedParams":{"searchParams":{},"params":{},"promises":["$@1f","$@20"]}}],[["$","script","script-0",{"src":"/_next/static/chunks/3ffwy1wl-54u6.js","async":true}],["$","script","script-1",{"src":"/_next/static/chunks/2ihck-ongu9fn.js","async":true}]],["$","$L21",null,{"children":["$","$22",null,{"name":"Next.MetadataOutlet","children":"$@23"}]}]]}]
+10:["$","$1","h",{"children":[null,["$","$L25",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]}],["$","$L27",null,{"children":[["$","div",null,{"hidden":true,"children":["$","$22",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"Command Center | SourceSignal | SourceSignal"}],["$","meta","1",{"name":"description","content":"Commercial Opportunity Engine — real-time opportunity signals the second they drop."}],["$","meta","2",{"property":"og:title","content":"SourceSignal — Procurement Intelligence"}],["$","meta","3",{"property":"og:description","content":"Discover, evaluate and monitor procurement opportunities across 15 supported sectors."}],["$","meta","4",{"property":"og:site_name","content":"SourceSignal"}],["$","meta","5",{"property":"og:type","content":"website"}],["$","meta","6",{"name":"twitter:card","content":"summary"}],["$","meta","7",{"name":"twitter:title","content":"SourceSignal — Procurement Intelligence"}],["$","meta","8",{"name":"twitter:description","content":"Discover, evaluate and monitor procurement opportunities across 15 supported sectors."}],["$","link","9",{"rel":"icon","href":"/icon.svg","type":"image/svg+xml"}],["$","$L28","10",{}]]}]}],null]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}]
+1f:{}
+20:"$e:props:children:0:props:serverProvidedParams:params"
+23:null
+13:true
+5:300
+5:C
+12:0
+b:"$undefined"
+8:"$undefined"
+11:"$undefined"
+f:"$undefined"
+4:"$undefined"

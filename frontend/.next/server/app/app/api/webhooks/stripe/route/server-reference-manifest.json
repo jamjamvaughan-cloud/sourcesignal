@@ -1,0 +1,15 @@
+{
+  "node": {
+    "40a8fd707950da3208fbd2eaf06fe1d682c3b4ff91": {
+      "workers": {
+        "app/app/api/webhooks/stripe/route": {
+          "moduleId": 44501,
+          "async": true
+        }
+      },
+      "exportedName": "POST",
+      "filename": "frontend/app/app/api/webhooks/stripe/route.ts"
+    }
+  },
+  "edge": {}
+}

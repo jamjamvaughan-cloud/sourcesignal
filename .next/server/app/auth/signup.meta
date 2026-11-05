@@ -1,0 +1,39 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/auth/layout,_N_T_/auth/signup/layout,_N_T_/auth/signup/page,_N_T_/auth/signup"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/auth/signup/__PAGE__"
+  ],
+  "prefetchHints": {
+    "hints": 64,
+    "slots": {
+      "children": {
+        "hints": 96,
+        "slots": {
+          "children": {
+            "hints": 96,
+            "slots": {
+              "children": {
+                "hints": 160,
+                "slots": null
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "routeCache": {
+    "key": "/route-cache/APP_PAGE/d3f4b3f2d1b7ce27165a3d4b36de50fdc01b7b1efdfe90e797ac34d0cd62efdc/$/auth/signup",
+    "owner": {
+      "kind": "APP_PAGE",
+      "sourceRoute": "/auth/signup/page"
+    },
+    "isFallback": false
+  }
+}

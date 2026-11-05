@@ -1,0 +1,46 @@
+{
+  "status": 307,
+  "headers": {
+    "location": "/dashboard/profile",
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/app/layout,_N_T_/app/dashboard/layout,_N_T_/app/dashboard/billing/layout,_N_T_/app/dashboard/billing/page,_N_T_/app/dashboard/billing"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/app/dashboard/billing/__PAGE__"
+  ],
+  "prefetchHints": {
+    "hints": 64,
+    "slots": {
+      "children": {
+        "hints": 96,
+        "slots": {
+          "children": {
+            "hints": 96,
+            "slots": {
+              "children": {
+                "hints": 96,
+                "slots": {
+                  "children": {
+                    "hints": 160,
+                    "slots": null
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "routeCache": {
+    "key": "/route-cache/APP_PAGE/b61312b18a9d993db82adef7c4e5a270220dbb36281aadaf2b16c9508cbc303d/$/app/dashboard/billing",
+    "owner": {
+      "kind": "APP_PAGE",
+      "sourceRoute": "/app/dashboard/billing/page"
+    },
+    "isFallback": false
+  }
+}

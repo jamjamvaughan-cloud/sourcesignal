@@ -1,0 +1,3 @@
+module.exports=[61067,e=>e.a(async(t,r)=>{try{var a=e.i(79603),n=e.i(54799),i=e.i(28054),c=t([a]);async function o(e,t){try{await (0,a.z)("UPDATE webhooks SET secret = $1 WHERE id = $2",[t,e])}catch(t){(0,i.S)("Failed to rotate webhook secret",{webhookId:e,error:t instanceof Error?t.message:String(t)})}}[a]=c.then?(await c)():c,e.s(["S",0,function(e){return{event:"signal.created",timestamp:new Date().toISOString(),signal:e}},"r",0,o,"L",0,function(e,t){return(0,n.createHmac)("sha256",e).update(JSON.stringify(t)).digest("hex")}]),r()}catch(e){r(e)}},!1)];
+
+//# sourceMappingURL=frontend_src_lib_webhooks_dispatcher_ts_0aazktckxopmf._.js.map
