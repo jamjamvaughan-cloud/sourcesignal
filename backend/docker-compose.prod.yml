@@ -1,54 +1,41 @@
-# SourceSignal Backend — Production manifest
+# SourceSignal Backend — Production manifest with Caddy reverse proxy
 #
 # Services:
-#   traefik  — Edge router / load balancer in front of replicated API instances
-#   api      — Replicated Node.js / Fastify API (stateless)
-#   worker   — Dedicated BullMQ background worker (webhooks, ingestion, hashing)
+#   caddy   — Reverse proxy with automatic Let's Encrypt SSL for api.sourcesignal.site
+#   api     — Replicated Node.js / Fastify API (stateless), scaled to 3
+#   worker  — Dedicated BullMQ background worker
 #   pgbouncer— Connection pooler in transaction mode (fronts PostgreSQL)
-#   postgres — PostgreSQL 16 (canonical data store)
-#   redis    — Redis 7 (sessions, rate limiting, BullMQ)
+#   postgres— PostgreSQL 16 (canonical data store)
+#   redis   — Redis 7 (sessions, rate limiting, BullMQ)
 #
 # Usage:
+#   cp .env.example .env   # edit .env with real secrets
 #   docker compose -f docker-compose.prod.yml up -d --scale api=3
-#
-# All runtime state lives in Redis / object storage; the API is stateless and
-# safe to replicate horizontally behind Traefik.
 
 services:
   # ---------------------------------------------------------------------------
-  # Edge router / load balancer
+  # Reverse proxy — Caddy v2 with automatic Let's Encrypt SSL
   # ---------------------------------------------------------------------------
-  traefik:
-    image: traefik:v2.11
-    command:
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.http.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--entrypoints.traefik.address=:8080"
+  caddy:
+    image: caddy:2-alpine
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    depends_on:
-      - api
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=Host(`api.localhost`)"
-      - "traefik.http.routers.api.entrypoints=http"
-      - "traefik.http.routers.api.service=api"
-      - "traefik.http.services.api.loadbalancer.server.port=3001"
-      - "traefik.http.routers.traefik.rule=Host(`traefik.localhost`)"
-      - "traefik.http.routers.traefik.entrypoints=traefik"
-      - "traefik.http.routers.traefik.service=api@internal"
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     networks:
       - sourcesignal
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:2019/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   # ---------------------------------------------------------------------------
-  # Replicated stateless API (scale with --scale api=N)
+  # Replicated stateless API (scale with --scale api=3)
   # ---------------------------------------------------------------------------
   api:
     build:
@@ -57,31 +44,36 @@ services:
       target: runner
     image: sourcesignal-api:latest
     environment:
-      - NODE_ENV=production
-      - PORT=3001
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:password@pgbouncer:5432/sourcesignal}
-      - REDIS_URL=${REDIS_URL:-redis://:password@redis:6379}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_EXPIRES_IN=7d
+      NODE_ENV: production
+      PORT: "3001"
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      API_URL: ${API_URL}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-sourcesignal}
     depends_on:
       pgbouncer:
         condition: service_started
       redis:
         condition: service_healthy
     deploy:
-      replicas: 2
+      replicas: 3
       restart_policy:
         condition: on-failure
         delay: 5s
         max_attempts: 10
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=Host(`api.localhost`)"
-      - "traefik.http.routers.api.entrypoints=http"
-      - "traefik.http.routers.api.service=api"
-      - "traefik.http.services.api.loadbalancer.server.port=3001"
     networks:
       - sourcesignal
+    restart: always
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get({host:'127.0.0.1',port:3001,path:'/healthz',timeout:2000},r=>process.exit(r.statusCode===200?0:1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   # ---------------------------------------------------------------------------
   # Dedicated background worker (BullMQ processor)
@@ -92,13 +84,14 @@ services:
       dockerfile: Dockerfile
       target: runner
     image: sourcesignal-worker:latest
-    command: ["node", "dist/src/workers/background.worker.js"]
+    command: ["node", "dist/workers/background.worker.js"]
     environment:
-      - NODE_ENV=production
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:password@pgbouncer:5432/sourcesignal}
-      - REDIS_URL=${REDIS_URL:-redis://:password@redis:6379}
-      - JWT_SECRET=${JWT_SECRET}
-      - BULLMQ_PREFIX=sourcesignal
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-sourcesignal}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       pgbouncer:
         condition: service_started
@@ -112,29 +105,35 @@ services:
         max_attempts: 10
     networks:
       - sourcesignal
+    restart: always
 
   # ---------------------------------------------------------------------------
   # PgBouncer — transaction-mode connection pooler
   # ---------------------------------------------------------------------------
   pgbouncer:
-    image: bitnami/pgbouncer:1.22
-    environment:
-      - POSTGRESQL_HOST=postgres
-      - POSTGRESQL_PORT_NUMBER=5432
-      - POSTGRESQL_DATABASE=${POSTGRES_DB:-sourcesignal}
-      - POSTGRESQL_PASSWORD=${POSTGRES_PASSWORD:-password}
+    image: edoburu/pgbouncer:latest
     ports:
-      - "5432:5432"
+      - "6432:5432"
     volumes:
-      - ./pgbouncer.ini:/opt/bitnami/pgbouncer/conf/pgbouncer.ini:ro
+      - ./pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./userlist.txt:/etc/pgbouncer/userlist.txt:ro
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     deploy:
       replicas: 1
       restart_policy:
         condition: on-failure
+        delay: 5s
+        max_attempts: 10
     networks:
       - sourcesignal
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ---------------------------------------------------------------------------
   # PostgreSQL 16 — canonical data store
@@ -142,8 +141,8 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB:-sourcesignal}
     ports:
       - "5433:5432"
@@ -156,17 +155,22 @@ services:
       - "max_connections=300"
       - "-c"
       - "shared_buffers=256MB"
+      - "-c"
+      - "listen_addresses=*"
     deploy:
       replicas: 1
       restart_policy:
         condition: on-failure
+        delay: 5s
+        max_attempts: 10
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-sourcesignal}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-sourcesignal}"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - sourcesignal
+    restart: always
 
   # ---------------------------------------------------------------------------
   # Redis 7 — sessions, rate limiting, BullMQ
@@ -178,7 +182,7 @@ services:
       - "--appendonly"
       - "yes"
       - "--requirepass"
-      - "${REDIS_PASSWORD:-password}"
+      - "${REDIS_PASSWORD}"
     ports:
       - "6379:6379"
     volumes:
@@ -187,18 +191,28 @@ services:
       replicas: 1
       restart_policy:
         condition: on-failure
+        delay: 5s
+        max_attempts: 10
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-password}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - sourcesignal
+    restart: always
 
 volumes:
   postgres_data:
+    driver: local
   redis_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
 
 networks:
   sourcesignal:
     driver: bridge
+    enable_ipv6: false

@@ -200,7 +200,9 @@ export function getRedis(): IORedis {
   }
 
   const redis = new IORedis(url, {
-    maxRetriesPerRequest: 3,
+    // BullMQ v5 requires maxRetriesPerRequest to be exactly null for
+    // blocking connections (Workers / Queues). undefined will fail.
+    maxRetriesPerRequest: null,
     lazyConnect: true,
     // Keep connections alive through NAT / load balancer idle timeouts.
     keepAlive: 30_000,

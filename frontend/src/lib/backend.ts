@@ -101,7 +101,19 @@ interface AuthMeResponse {
  */
 export async function getSessionContext(): Promise<SessionContext> {
   try {
-    const response = await backendFetch("/api/auth/me");
+    // Call the frontend's own /api/auth/me route (Next.js API handler) which
+    // resolves the session against the local PostgreSQL database. Do not use
+    // backendFetch() here — that targets the backend VPS at a different path
+    // (/auth/me) and returns a different response shape.
+    const cookieHeader = (await headers()).get("cookie");
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/api/auth/me`,
+      {
+        headers: cookieHeader ? { cookie: cookieHeader } : {},
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
     if (!response.ok) {
       return { user: null, planId: "free" };
     }

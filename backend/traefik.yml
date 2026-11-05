@@ -1,0 +1,52 @@
+# SourceSignal — Traefik v2 static configuration template
+#
+# This file documents the Traefik entrypoints, providers, and Let's Encrypt
+# ACME resolver used by docker-compose.prod.yml. The compose file passes these
+# as CLI flags; this YAML is provided as a reference/override template if you
+# prefer file-based provider configuration instead of Docker labels.
+#
+# Copy to traefik.prod.yml and mount into the traefik container if desired:
+#   volumes:
+#     - ./traefik.prod.yml:/etc/traefik/traefik.yml:ro
+
+api:
+  insecure: false
+  dashboard: true
+
+entryPoints:
+  http:
+    address: ":80"
+    # Redirect HTTP -> HTTPS
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: ":443"
+  traefik:
+    address: ":8080"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: sourcesignal
+  file:
+    filename: /etc/traefik/dynamic_conf.yml
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: ${ACME_EMAIL}
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: http
+
+# Optional: rate limiter middleware for the API (protects auth/signup/login)
+# http:
+#   middlewares:
+#     api-rate-limit:
+#       rateLimit:
+#         average: 100
+#         burst: 50

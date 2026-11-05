@@ -21,15 +21,28 @@ export function buildApp() {
     },
     requestTimeout: 30_000,
     keepAliveTimeout: 5_000,
+    pluginTimeout: 30_000,
   });
 
-  // CORS (restrict origins in production via env if desired).
+  app.log.info("Boot: registering CORS plugin");
+  // CORS (restrict origins to configured APP_ORIGIN in production).
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? process.env.API_URL ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
   app.register(cors, {
-    origin: true,
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin) || allowedOrigins.length === 0) {
+        return cb(null, true);
+      }
+      return cb(new Error("Not allowed by CORS"), false);
+    },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
     credentials: true,
   });
+  app.log.info("Boot: CORS plugin registered");
 
   // Health / readiness (no auth required — Traefik polls this).
   app.get("/healthz", async () => {
@@ -57,9 +70,21 @@ export function buildApp() {
   });
 
   // API routes
-  app.register(authRoutes, { prefix: "/auth" });
-  app.register(signalsRoutes, { prefix: "/signals" });
-  app.register(webhooksRoutes, { prefix: "/webhooks" });
+  app.log.info("Boot: registering authRoutes plugin");
+  app.register(async (app, opts) => {
+    authRoutes(app);
+  }, { prefix: "/auth" });
+  app.log.info("Boot: authRoutes plugin registered");
+  app.log.info("Boot: registering signalsRoutes plugin");
+  app.register(async (app, opts) => {
+    signalsRoutes(app);
+  }, { prefix: "/signals" });
+  app.log.info("Boot: signalsRoutes plugin registered");
+  app.log.info("Boot: registering webhooksRoutes plugin");
+  app.register(async (app, opts) => {
+    webhooksRoutes(app);
+  }, { prefix: "/webhooks" });
+  app.log.info("Boot: webhooksRoutes plugin registered");
 
   // 404 handler
   app.setNotFoundHandler((request, reply) => {
