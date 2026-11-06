@@ -190,7 +190,9 @@ function getRedis() {
         throw new BackendUnavailableError("Missing REDIS_URL. Add it to .env (see .env.example) and restart.");
     }
     const redis = new ioredis_1.default(url, {
-        maxRetriesPerRequest: 3,
+        // BullMQ v5 requires maxRetriesPerRequest to be exactly null for
+        // blocking connections (Workers / Queues). undefined will fail.
+        maxRetriesPerRequest: null,
         lazyConnect: true,
         // Keep connections alive through NAT / load balancer idle timeouts.
         keepAlive: 30_000,

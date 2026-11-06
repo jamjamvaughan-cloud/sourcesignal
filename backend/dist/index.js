@@ -17,6 +17,9 @@ const database_1 = require("./config/database");
 const routes_1 = require("./modules/auth/routes");
 const routes_2 = require("./modules/signals/routes");
 const routes_3 = require("./modules/webhooks/routes");
+const opportunities_1 = require("./modules/opportunities");
+const stripe_1 = require("./modules/stripe");
+const intelligence_1 = require("./modules/intelligence");
 /** Builds and configures the Fastify application. */
 function buildApp() {
     const app = (0, fastify_1.default)({
@@ -25,14 +28,28 @@ function buildApp() {
         },
         requestTimeout: 30_000,
         keepAliveTimeout: 5_000,
+        pluginTimeout: 30_000,
     });
-    // CORS (restrict origins in production via env if desired).
+    app.log.info("Boot: registering CORS plugin");
+    // CORS (restrict origins to configured APP_ORIGIN in production).
+    const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? process.env.API_URL ?? "")
+        .split(",")
+        .map((o) => o.trim())
+        .filter(Boolean);
     app.register(cors_1.default, {
-        origin: true,
+        origin: (origin, cb) => {
+            if (!origin)
+                return cb(null, true);
+            if (allowedOrigins.includes(origin) || allowedOrigins.length === 0) {
+                return cb(null, true);
+            }
+            return cb(new Error("Not allowed by CORS"), false);
+        },
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
         credentials: true,
     });
+    app.log.info("Boot: CORS plugin registered");
     // Health / readiness (no auth required — Traefik polls this).
     app.get("/healthz", async () => {
         const [db, redis] = await Promise.all([
@@ -57,9 +74,33 @@ function buildApp() {
         return { status: "ready" };
     });
     // API routes
-    app.register(routes_1.authRoutes, { prefix: "/auth" });
-    app.register(routes_2.signalsRoutes, { prefix: "/signals" });
-    app.register(routes_3.webhooksRoutes, { prefix: "/webhooks" });
+    app.log.info("Boot: registering authRoutes plugin");
+    app.register(async (app, opts) => {
+        (0, routes_1.authRoutes)(app);
+    }, { prefix: "/auth" });
+    app.log.info("Boot: authRoutes plugin registered");
+    app.log.info("Boot: registering signalsRoutes plugin");
+    app.register(async (app, opts) => {
+        (0, routes_2.signalsRoutes)(app);
+    }, { prefix: "/signals" });
+    app.log.info("Boot: signalsRoutes plugin registered");
+    app.log.info("Boot: registering webhooksRoutes plugin");
+    app.register(async (app, opts) => {
+        (0, routes_3.webhooksRoutes)(app);
+    }, { prefix: "/webhooks" });
+    app.log.info("Boot: webhooksRoutes plugin registered");
+    app.log.info("Boot: registering opportunitiesRoutes plugin");
+    app.register(async (app, opts) => {
+        (0, opportunities_1.opportunitiesRoutes)(app);
+    });
+    app.log.info("Boot: registering stripeRoutes plugin");
+    app.register(async (app, opts) => {
+        (0, stripe_1.stripeRoutes)(app);
+    });
+    app.log.info("Boot: registering intelligenceRoutes plugin");
+    app.register(async (app, opts) => {
+        (0, intelligence_1.intelligenceRoutes)(app);
+    });
     // 404 handler
     app.setNotFoundHandler((request, reply) => {
         reply.code(404).send({ error: "Not found", path: request.routerPath });

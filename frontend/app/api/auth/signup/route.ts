@@ -24,7 +24,10 @@ import { error, info } from "@/lib/logger";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("FATAL: JWT_SECRET environment variable is missing on server startup.");
+}
 
 const SUPPORTED_COUNTRIES = new Set(["UK", "US", "CA", "IE", "AU", "EU"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+$/;

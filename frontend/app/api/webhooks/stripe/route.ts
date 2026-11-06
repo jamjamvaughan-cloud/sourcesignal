@@ -38,7 +38,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const stripe = new Stripe(stripeSecretKey, {
-    apiVersion: "2026-10-28.endive",
+    apiVersion: "2024-10-28.acacia",
   });
 
   const payload = await request.text();

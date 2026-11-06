@@ -1,1 +1,1 @@
-{"version":3,"file":"background.worker.d.ts","sourceRoot":"","sources":["../../src/workers/background.worker.ts"],"names":[],"mappings":"AAAA;;;;;;;GAOG"}
+{"version":3,"file":"background.worker.d.ts","sourceRoot":"","sources":["../../src/workers/background.worker.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;;GAWG;AAWH,OAAO,EAGL,gBAAgB,EAEjB,MAAM,aAAa,CAAC;AAoGrB;;;GAGG;AACH,wBAAgB,kBAAkB,CAAC,OAAO,CAAC,EAAE,gBAAgB,GAAG,MAAM,IAAI,CAgCzE"}

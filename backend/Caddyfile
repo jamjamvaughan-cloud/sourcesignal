@@ -1,21 +1,3 @@
-{
-    email admin@sourcesignal.site
-    acme_ca https://acme-v02.api.letsencrypt.org/directory
-}
-
-api.sourcesignal.site {
-    tls {
-        protocols tls1.2 tls1.3
-    }
-    header {
-        # Security headers
-        X-Frame-Options "DENY"
-        X-Content-Type-Options "nosniff"
-        X-XSS-Protection "1; mode=block"
-        Referrer-Policy "no-referrer"
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        # Content Security Policy - restrictive but functional
-        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://api.sourcesignal.site; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-    }
+:80 {
     reverse_proxy api:3001
 }

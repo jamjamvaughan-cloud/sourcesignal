@@ -77,15 +77,17 @@ async function runIngestionCycle(options?: IngestionOptions): Promise<void> {
         try {
           const result = await query(
             `INSERT INTO signals (
-              organisation_id, title, source_url, content_hash, raw_payload, created_at
-             ) VALUES ($1, $2, $3, $4, $5, NOW())
+              organisation_id, title, source_url, content_hash, sha256_hash,
+              raw_payload, created_at
+             ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
              RETURNING id`,
             [
-              "00000000-0000-0000-0000-000000000000", // system ingestion — no organisation
+              null, // system ingestion — no organisation
               record.title,
               record.sourceUrl,
               contentHash,
-              record.rawPayload ?? null,
+              contentHash,
+              JSON.stringify(record.rawPayload ?? null),
             ],
           );
 

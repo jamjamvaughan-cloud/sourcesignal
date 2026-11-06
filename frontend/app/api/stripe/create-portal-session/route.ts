@@ -26,7 +26,7 @@ function getStripe(): Stripe {
       throw new Error("STRIPE_SECRET_KEY is not set.");
     }
     stripeInstance = new Stripe(key, {
-      apiVersion: "2026-10-28.endive",
+      apiVersion: "2024-10-28.acacia",
     });
   }
   return stripeInstance;

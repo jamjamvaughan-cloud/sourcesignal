@@ -12,6 +12,12 @@ import { closeConnections, dbHealthCheck, redisHealthCheck } from "./config/data
 import { authRoutes } from "./modules/auth/routes";
 import { signalsRoutes } from "./modules/signals/routes";
 import { webhooksRoutes } from "./modules/webhooks/routes";
+import { opportunitiesRoutes } from "./modules/opportunities";
+import { stripeRoutes } from "./modules/stripe";
+import { intelligenceRoutes } from "./modules/intelligence";
+import { userPrefsRoutes } from "./modules/user_prefs";
+import { alertsRoutes } from "./modules/alerts";
+import { streamRoutes } from "./modules/streams";
 
 /** Builds and configures the Fastify application. */
 export function buildApp() {
@@ -85,6 +91,31 @@ export function buildApp() {
     webhooksRoutes(app);
   }, { prefix: "/webhooks" });
   app.log.info("Boot: webhooksRoutes plugin registered");
+
+  app.log.info("Boot: registering opportunitiesRoutes plugin");
+  app.register(async (app, opts) => {
+    opportunitiesRoutes(app);
+  });
+  app.log.info("Boot: registering stripeRoutes plugin");
+  app.register(async (app, opts) => {
+    stripeRoutes(app);
+  });
+  app.log.info("Boot: registering intelligenceRoutes plugin");
+  app.register(async (app, opts) => {
+    intelligenceRoutes(app);
+  });
+  app.log.info("Boot: registering userPrefsRoutes plugin");
+  app.register(async (app, opts) => {
+    userPrefsRoutes(app);
+  });
+  app.log.info("Boot: registering alertsRoutes plugin");
+  app.register(async (app, opts) => {
+    alertsRoutes(app);
+  });
+  app.log.info("Boot: registering streamRoutes plugin");
+  app.register(async (app, opts) => {
+    streamRoutes(app);
+  });
 
   // 404 handler
   app.setNotFoundHandler((request, reply) => {

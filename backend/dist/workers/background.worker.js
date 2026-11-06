@@ -6,12 +6,18 @@
  * HMAC-SHA256 signatures, signal ingestion/hashing, and any future crypto or
  * ingestion tasks. Runs as its own container/replica so API instances stay
  * stateless and lightweight.
+ *
+ * Also runs a periodic ingestion cron loop (every 15 minutes) that executes
+ * all active ingestion adapters and persists signals via PgBouncer to
+ * PostgreSQL, deduplicated by SHA-256 content hash.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.startIngestionLoop = startIngestionLoop;
 const bullmq_1 = require("bullmq");
 const database_1 = require("../config/database");
 const routes_1 = require("../modules/signals/routes");
 const routes_2 = require("../modules/webhooks/routes");
+const adapters_1 = require("../adapters");
 /* ------------------------------------------------------------------ */
 /* Queues                                                             */
 /* ------------------------------------------------------------------ */
@@ -19,6 +25,118 @@ const INGESTION_QUEUE_NAME = "signal-ingest";
 const CONTENT_HASH_QUEUE_NAME = "content-hash";
 const ingestionQueue = new bullmq_1.Queue(INGESTION_QUEUE_NAME, { connection: database_1.redis });
 const contentHashQueue = new bullmq_1.Queue(CONTENT_HASH_QUEUE_NAME, { connection: database_1.redis });
+/* ------------------------------------------------------------------ */
+/* Ingestion cron loop (15-minute interval)                           */
+/* ------------------------------------------------------------------ */
+const INGESTION_INTERVAL_MS = 15 * 60 * 1000;
+let ingestionLoopInterval = null;
+let ingestionRunning = false;
+/**
+ * Runs a single ingestion cycle across all enabled adapters, computing
+ * SHA-256 content hashes and upserting signals into PostgreSQL via PgBouncer
+ * with ON CONFLICT (content_hash) DO NOTHING for idempotent re-ingestion.
+ */
+async function runIngestionCycle(options) {
+    const adapters = (0, adapters_1.getEnabledSignalAdapters)();
+    console.log("[ingestion] Starting cycle", { adapters: adapters.length });
+    let discovered = 0;
+    let inserted = 0;
+    let duplicates = 0;
+    let failed = 0;
+    for (const adapter of adapters) {
+        if (!adapter.enabled)
+            continue;
+        const startedAt = Date.now();
+        let adapterDiscovered = 0;
+        try {
+            const records = await adapter.discover(options);
+            adapterDiscovered = records.length;
+            discovered += adapterDiscovered;
+            for (const record of records) {
+                const contentHash = (0, routes_1.computeContentHash)(record.rawPayload ?? null);
+                try {
+                    const result = await (0, database_1.query)(`INSERT INTO signals (
+              organisation_id, title, source_url, content_hash, sha256_hash,
+              raw_payload, created_at
+             ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+             RETURNING id`, [
+                        null, // system ingestion — no organisation
+                        record.title,
+                        record.sourceUrl,
+                        contentHash,
+                        contentHash,
+                        JSON.stringify(record.rawPayload ?? null),
+                    ]);
+                    if ((result.rowCount ?? 0) > 0) {
+                        inserted++;
+                    }
+                    else {
+                        duplicates++;
+                    }
+                }
+                catch (err) {
+                    failed++;
+                    console.warn("[ingestion] Signal insert failed", {
+                        adapter: adapter.name,
+                        sourceId: record.sourceId,
+                        error: err instanceof Error ? err.message : String(err),
+                    });
+                }
+            }
+            console.log("[ingestion] Adapter complete", {
+                adapter: adapter.name,
+                jurisdiction: adapter.jurisdiction,
+                discovered: adapterDiscovered,
+                durationMs: Date.now() - startedAt,
+            });
+        }
+        catch (err) {
+            failed++;
+            console.error("[ingestion] Adapter error", {
+                adapter: adapter.name,
+                jurisdiction: adapter.jurisdiction,
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
+    }
+    console.log("[ingestion] Cycle complete", { discovered, inserted, duplicates, failed });
+}
+/**
+ * Starts the ingestion cron loop. Runs immediately on startup, then every
+ * INGESTION_INTERVAL_MS (15 minutes). Returns a stop function.
+ */
+function startIngestionLoop(options) {
+    let stopped = false;
+    const tick = async () => {
+        if (stopped || ingestionRunning)
+            return;
+        ingestionRunning = true;
+        try {
+            await runIngestionCycle(options);
+        }
+        catch (err) {
+            console.error("[ingestion] Cycle crashed", {
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
+        finally {
+            ingestionRunning = false;
+        }
+    };
+    console.log("[ingestion] Starting ingestion loop", { intervalMs: INGESTION_INTERVAL_MS });
+    void tick();
+    ingestionLoopInterval = setInterval(() => {
+        void tick();
+    }, INGESTION_INTERVAL_MS);
+    return () => {
+        stopped = true;
+        if (ingestionLoopInterval) {
+            clearInterval(ingestionLoopInterval);
+            ingestionLoopInterval = null;
+        }
+        console.log("[ingestion] Loop stopped");
+    };
+}
 /* ------------------------------------------------------------------ */
 /* Job processors                                                     */
 /* ------------------------------------------------------------------ */
@@ -170,6 +288,9 @@ async function shutdown() {
         contentHashQueue.close(),
         (0, database_1.closeConnections)(),
     ]);
+    if (ingestionLoopInterval) {
+        clearInterval(ingestionLoopInterval);
+    }
     console.log("[worker] Shutdown complete");
     process.exit(0);
 }
@@ -184,4 +305,6 @@ process.on("unhandledRejection", (err) => {
 console.log("[worker] Background worker started", {
     queues: [routes_2.WEBHOOK_QUEUE_NAME, INGESTION_QUEUE_NAME, CONTENT_HASH_QUEUE_NAME],
 });
+// Start the ingestion cron loop immediately on worker startup.
+startIngestionLoop();
 //# sourceMappingURL=background.worker.js.map
