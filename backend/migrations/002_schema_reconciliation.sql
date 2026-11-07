@@ -40,7 +40,9 @@ ALTER TABLE signals
   ADD COLUMN IF NOT EXISTS source_hash VARCHAR(64),
   ADD COLUMN IF NOT EXISTS sha256_hash VARCHAR(64),
   ADD COLUMN IF NOT EXISTS commercial_why TEXT,
-  ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ DEFAULT NOW();
+  ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
 
 -- Make organisation_id nullable so the ingestion worker can insert
 -- global/scraped signals without a matching organisation row.
