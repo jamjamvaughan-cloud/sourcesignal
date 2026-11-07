@@ -224,7 +224,7 @@ export async function POST(
 
         const token = sign(
           { userId: created.userId, email: created.email },
-          JWT_SECRET,
+          JWT_SECRET!,
           { expiresIn: SESSION_TTL },
         );
         await setSession(
@@ -295,7 +295,7 @@ export async function POST(
 
         const token = sign(
           { userId: user.id, email: user.email },
-          JWT_SECRET,
+          JWT_SECRET!,
           { expiresIn: SESSION_TTL },
         );
         await setSession(

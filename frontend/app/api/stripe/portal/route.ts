@@ -44,7 +44,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const StripeClass = StripeModule.default as typeof Stripe;
 
   const stripe = new StripeClass(stripeConfig.secretKey, {
-    apiVersion: "2024-10-28.acacia",
+    apiVersion: "2026-10-28.endive",
   });
 
   try {

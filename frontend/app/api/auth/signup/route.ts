@@ -198,7 +198,7 @@ export async function POST(request: Request) {
     // this user immediately after signup.
     const token = sign(
       { userId: newUser.id, email: newUser.email },
-      JWT_SECRET,
+      JWT_SECRET!,
       { expiresIn: SESSION_TTL },
     );
     await setSession(

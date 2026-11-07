@@ -166,7 +166,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const stripe = new Stripe(stripeConfig.secretKey, {
-    apiVersion: "2024-10-28.acacia",
+    apiVersion: "2026-10-28.endive",
   });
 
   const body = await request.text();
